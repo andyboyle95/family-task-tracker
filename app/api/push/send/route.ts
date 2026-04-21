@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendPushNotification } from '@/lib/webpush'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   // Internal endpoint — secured by service role; not exposed to public
   const authHeader = request.headers.get('authorization')
