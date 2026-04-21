@@ -37,6 +37,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const db = createAdminClient()
 
+  // Fetch first so we can reverse points if the task was completed
+  const { data: task } = await db
+    .from('tasks')
+    .select('*')
+    .eq('id', id)
+    .eq('family_id', session.familyId)
+    .single()
+
+  if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const { error } = await db
     .from('tasks')
     .delete()
@@ -44,5 +54,14 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     .eq('family_id', session.familyId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Reverse points for whoever completed it
+  if (task.status === 'completed') {
+    const awardedTo = task.assigned_to ?? task.completed_by
+    if (awardedTo) {
+      await db.rpc('increment_points', { user_id: awardedTo, amount: -task.point_bounty })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }

@@ -26,7 +26,8 @@ function extractPoints(text: string): number | null {
 }
 
 function detectBounty(text: string): boolean {
-  return /\banyone\b|\bwhoever\b|up\s+for\s+grabs|anyone\s+can|for\s+(the\s+)?anyone/i.test(text)
+  // Matches explicit "bounty"/"bounties" keyword, or phrases meaning "anyone can do it"
+  return /\bbount(?:y|ies)\b|\banyone\b|\bwhoever\b|up\s+for\s+grabs|anyone\s+can|family\s+can\s+(?:do|grab|claim)|open\s+task/i.test(text)
 }
 
 function extractAssigneeName(text: string): string | null {
@@ -36,10 +37,13 @@ function extractAssigneeName(text: string): string | null {
 
 function buildTitle(text: string): string {
   let t = text
-  // Strip meta-phrases
+  // Strip meta-phrases and bounty-specific words
   t = t.replace(/make\s+(?:a\s+)?(?:daily\s+|weekly\s+|monthly\s+)?(?:task|bounty|chore|reminder)\s+(?:for|to|about)\s+/gi, '')
   t = t.replace(/which\s+anyone\s+can\s+(?:do|complete|grab)/gi, '')
+  t = t.replace(/\b(?:a\s+)?bount(?:y|ies)\b/gi, '')
   t = t.replace(/for\s+anyone/gi, '')
+  t = t.replace(/anyone\s+can\s+(?:do|grab|claim)/gi, '')
+  t = t.replace(/up\s+for\s+grabs/gi, '')
   t = t.replace(/worth\s+\d+\s+(?:pts?|points?)/gi, '')
   t = t.replace(/\d+\s+(?:pts?|points?)/gi, '')
   t = t.replace(/every\s+(?:\d+\s+)?(?:day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/gi, '')
@@ -87,9 +91,9 @@ export async function parseNaturalLanguage(input: string): Promise<NLPResult> {
 Today: ${now.toDateString()}
 
 Rules:
-- title: 1-4 word clean title. "doing the dishwasher"→"Dishwasher", "take out the bins"→"Take Out Bins"
-- is_bounty: true if mentions anyone/whoever/anyone can do it
-- point_bounty: number if mentioned, else null
+- title: 1-4 word clean title. Strip "bounty", recurrence, points, names. "Dishwasher bounty every day"→"Dishwasher", "take out the bins"→"Take Out Bins"
+- is_bounty: true if the word "bounty" appears OR mentions anyone/whoever/up for grabs/family can do it
+- point_bounty: number if mentioned (e.g. "5 pts", "10 points"), else null
 - recurrence_rule: RRULE string (FREQ=DAILY, FREQ=WEEKLY;BYDAY=TU etc) or null
 - due_at: ISO datetime if specific date/time mentioned, else null
 - assignee_name: first name if assigned to someone, else null
