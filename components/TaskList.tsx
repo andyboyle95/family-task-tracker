@@ -32,6 +32,76 @@ type Filter = typeof FILTERS[number]['key']
 
 const UNDO_SECONDS = 15
 
+/* ── Grouped view for the "All" filter ──────────────────────────────────── */
+interface GroupedProps {
+  pending: Task[]
+  done: Task[]
+  members: Profile[]
+  currentUserId: string
+  onComplete: (id: string) => Promise<void>
+  onUncomplete: (id: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  onEdit: (task: Task) => void
+}
+
+function GroupedTaskList({ pending, done, members, currentUserId, onComplete, onUncomplete, onDelete, onEdit }: GroupedProps) {
+  const cardProps = { onComplete, onUncomplete, onDelete, onEdit }
+
+  const mine       = pending.filter(t => t.assigned_to === currentUserId)
+  const others     = members.filter(m => m.id !== currentUserId)
+  const unassigned = pending.filter(t => !t.assigned_to)
+
+  return (
+    <div className="space-y-4">
+      {mine.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider pb-2">Your tasks</p>
+          <div className="space-y-2.5">
+            {mine.map(t => <TaskCard key={t.id} task={t} {...cardProps} />)}
+          </div>
+        </section>
+      )}
+
+      {others.map(member => {
+        const theirTasks = pending.filter(t => t.assigned_to === member.id)
+        if (theirTasks.length === 0) return null
+        return (
+          <section key={member.id}>
+            <div className="flex items-center gap-2 pb-2">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                style={{ backgroundColor: member.avatar_color }}>
+                {member.name[0].toUpperCase()}
+              </div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{member.name}</p>
+            </div>
+            <div className="space-y-2.5">
+              {theirTasks.map(t => <TaskCard key={t.id} task={t} {...cardProps} />)}
+            </div>
+          </section>
+        )
+      })}
+
+      {unassigned.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-2">Unassigned</p>
+          <div className="space-y-2.5">
+            {unassigned.map(t => <TaskCard key={t.id} task={t} {...cardProps} />)}
+          </div>
+        </section>
+      )}
+
+      {done.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-2">Completed</p>
+          <div className="space-y-2.5">
+            {done.map(t => <TaskCard key={t.id} task={t} {...cardProps} />)}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export function TaskList({ initialTasks, members, currentUserId, familyId }: Props) {
   const [tasks, setTasks]         = useState<Task[]>(initialTasks)
   const [filter, setFilter]       = useState<Filter>('all')
@@ -208,16 +278,30 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
             </div>
           )}
 
-          {pending.map(t => (
-            <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
-          ))}
-
-          {done.length > 0 && (
+          {filter === 'all' ? (
+            <GroupedTaskList
+              pending={pending}
+              done={done}
+              members={members}
+              currentUserId={currentUserId}
+              onComplete={handleComplete}
+              onUncomplete={handleUncomplete}
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+            />
+          ) : (
             <>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-3 pb-1">Completed</p>
-              {done.map(t => (
+              {pending.map(t => (
                 <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
               ))}
+              {done.length > 0 && (
+                <>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-3 pb-1">Completed</p>
+                  {done.map(t => (
+                    <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
+                  ))}
+                </>
+              )}
             </>
           )}
         </div>

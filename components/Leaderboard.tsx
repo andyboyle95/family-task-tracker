@@ -6,6 +6,7 @@ import type { Profile } from '@/types'
 
 export interface MemberStats {
   profile: Profile
+  points_alltime: number
   points_today: number
   points_week: number
   task_breakdown: { title: string; count: number; points: number }[]
@@ -33,7 +34,6 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
   const innerW = W - padL - padR
   const innerH = H - padT - padB
 
-  // Build cumulative totals per person per day
   const lines = stats.map(s => {
     let cum = 0
     const pts = chartData.map(day => {
@@ -52,7 +52,6 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
   const toPath = (pts: number[]) =>
     pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${cx(i).toFixed(1)} ${cy(p).toFixed(1)}`).join(' ')
 
-  // Show a label every ~3 days
   const labelIdxs = chartData.reduce<number[]>((acc, _, i) => {
     if (i === 0 || i === n - 1 || i % 3 === 0) acc.push(i)
     return acc
@@ -60,22 +59,17 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible">
-      {/* Subtle grid */}
       {[0.25, 0.5, 0.75, 1].map(f => (
         <line key={f}
           x1={padL} y1={cy(maxPts * f).toFixed(1)}
           x2={W - padR} y2={cy(maxPts * f).toFixed(1)}
           stroke="#f3f4f6" strokeWidth="1" />
       ))}
-
-      {/* Lines */}
       {lines.map(l => (
         <path key={l.id} d={toPath(l.pts)} fill="none"
           stroke={l.color} strokeWidth="2.5"
           strokeLinecap="round" strokeLinejoin="round" />
       ))}
-
-      {/* End-point dots + name labels */}
       {lines.map(l => {
         const last = l.pts[n - 1] ?? 0
         return (
@@ -84,8 +78,6 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
             r="3.5" fill={l.color} />
         )
       })}
-
-      {/* X axis labels */}
       {labelIdxs.map(i => (
         <text key={i} x={cx(i).toFixed(1)} y={H - 6}
           textAnchor="middle" fill="#9ca3af" fontSize="8">
@@ -99,7 +91,7 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
 /* ── Main component ─────────────────────────────────────────────────────── */
 export function Leaderboard({ stats, currentUserId, chartData }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
-  const sorted = [...stats].sort((a, b) => b.profile.points - a.profile.points)
+  const sorted = [...stats].sort((a, b) => b.points_alltime - a.points_alltime)
   const me = stats.find(s => s.profile.id === currentUserId)
 
   return (
@@ -113,7 +105,7 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
             {[
               { label: 'Today',     value: me.points_today },
               { label: 'This week', value: me.points_week },
-              { label: 'All time',  value: me.profile.points },
+              { label: 'All time',  value: me.points_alltime },
             ].map(({ label, value }) => (
               <div key={label} className="bg-white/10 rounded-xl p-3">
                 <p className="text-2xl font-bold">{value.toLocaleString()}</p>
@@ -137,7 +129,6 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
                 isMe ? 'border-indigo-200 bg-indigo-50' : 'border-gray-100 bg-white'
               }`}>
 
-              {/* Row */}
               <button
                 onClick={() => setExpanded(isExpanded ? null : s.profile.id)}
                 className="w-full flex items-center gap-3 p-4 text-left"
@@ -162,7 +153,7 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="text-lg font-bold text-amber-600">{s.profile.points.toLocaleString()}</span>
+                  <span className="text-lg font-bold text-amber-600">{s.points_alltime.toLocaleString()}</span>
                   <span className="text-xs text-gray-400 ml-0.5">pts</span>
                 </div>
 
@@ -171,11 +162,8 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
                 </span>
               </button>
 
-              {/* Expanded detail */}
               {isExpanded && (
                 <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
-
-                  {/* Today / week mini stats */}
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: 'Today',     value: s.points_today },
@@ -188,14 +176,13 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
                     ))}
                   </div>
 
-                  {/* Task breakdown */}
                   {s.task_breakdown.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Points by task</p>
                       <div className="space-y-2">
                         {s.task_breakdown.map(t => {
-                          const pct = s.profile.points > 0
-                            ? Math.round((t.points / s.profile.points) * 100)
+                          const pct = s.points_alltime > 0
+                            ? Math.round((t.points / s.points_alltime) * 100)
                             : 0
                           return (
                             <div key={t.title} className="flex items-center gap-2">
@@ -233,8 +220,6 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
       {sorted.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-sm font-semibold text-gray-900 mb-1">Points race — last 14 days</p>
-
-          {/* Legend */}
           <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
             {sorted.map(s => (
               <div key={s.profile.id} className="flex items-center gap-1.5">
@@ -244,7 +229,6 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
               </div>
             ))}
           </div>
-
           <PointsChart stats={sorted} chartData={chartData} />
           <p className="text-[10px] text-gray-300 text-right mt-1">Cumulative pts earned</p>
         </div>

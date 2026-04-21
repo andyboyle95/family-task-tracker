@@ -44,12 +44,13 @@ function getAchievement(breakdown: { title: string; count: number }[], totalPoin
 }
 
 function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] {
-  const now       = new Date()
+  const now        = new Date()
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const weekStart  = new Date(now); weekStart.setDate(now.getDate() - 7); weekStart.setHours(0, 0, 0, 0)
 
   return profiles.map(p => {
     const mine = history.filter(t => (t.completed_by ?? t.assigned_to) === p.id)
+    const points_alltime = mine.reduce((s, t) => s + effectivePts(t), 0)
 
     const byTitle = new Map<string, { count: number; points: number }>()
     for (const t of mine) {
@@ -63,15 +64,16 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
       .slice(0, 6)
 
     return {
-      profile:      p,
+      profile: p,
+      points_alltime,
       points_today: mine
         .filter(t => t.completed_at && new Date(t.completed_at) >= todayStart)
         .reduce((s, t) => s + effectivePts(t), 0),
-      points_week:  mine
+      points_week: mine
         .filter(t => t.completed_at && new Date(t.completed_at) >= weekStart)
         .reduce((s, t) => s + effectivePts(t), 0),
       task_breakdown,
-      achievement: getAchievement(task_breakdown, p.points),
+      achievement: getAchievement(task_breakdown, points_alltime),
     }
   })
 }
@@ -104,17 +106,16 @@ export default async function LeaderboardPage() {
   if (!session) redirect('/join')
 
   const db = createAdminClient()
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
   const [{ data: members }, { data: family }, { data: profile }, { data: history }] = await Promise.all([
     db.from('profiles').select('*').eq('family_id', session.familyId),
     db.from('families').select('name').eq('id', session.familyId).single(),
     db.from('profiles').select('*').eq('id', session.userId).single(),
+    // No date filter — fetch all history so all-time totals are accurate
     db.from('tasks')
       .select('id, title, point_bounty, is_shared, completed_by, assigned_to, completed_at')
       .eq('family_id', session.familyId)
       .eq('status', 'completed')
-      .gte('completed_at', thirtyDaysAgo)
       .order('completed_at', { ascending: true }),
   ])
 
