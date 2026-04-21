@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="min-h-full bg-gray-50">
+      <body className="min-h-full bg-gray-50" suppressHydrationWarning>
         {children}
         <script dangerouslySetInnerHTML={{
           __html: `if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js') }`

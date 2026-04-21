@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (famErr || !family) {
+    console.error('Create family error:', famErr)
     return NextResponse.json({ error: famErr?.message ?? 'Could not create family' }, { status: 500 })
   }
 
