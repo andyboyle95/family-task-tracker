@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Copy, Check, RefreshCw } from 'lucide-react'
-import { createAdminClient } from '@/lib/supabase/server'
+import { Copy, Check, RefreshCw, RotateCcw } from 'lucide-react'
 import type { Profile, Family } from '@/types'
 
 interface Props {
@@ -14,8 +13,13 @@ interface Props {
 }
 
 export function SettingsClient({ profile, family, members, appUrl }: Props) {
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copied,    setCopied]    = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [resetting, setResetting] = useState<string | null>(null)
+  const [resetDone, setResetDone] = useState<string | null>(null)
+  const [localPts,  setLocalPts]  = useState<Record<string, number>>(
+    Object.fromEntries(members.map(m => [m.id, m.points]))
+  )
   const router = useRouter()
 
   async function switchUser() {
@@ -29,6 +33,17 @@ export function SettingsClient({ profile, family, members, appUrl }: Props) {
     navigator.clipboard.writeText(text)
     setCopied(key)
     setTimeout(() => setCopied(null), 2000)
+  }
+
+  async function resetPoints(memberId: string) {
+    setResetting(memberId)
+    const res = await fetch(`/api/profiles/${memberId}/reset-points`, { method: 'POST' })
+    if (res.ok) {
+      setLocalPts(prev => ({ ...prev, [memberId]: 0 }))
+      setResetDone(memberId)
+      setTimeout(() => setResetDone(null), 2000)
+    }
+    setResetting(null)
   }
 
   const voiceWebhookUrl = `${appUrl}/api/voice`
@@ -45,7 +60,7 @@ export function SettingsClient({ profile, family, members, appUrl }: Props) {
           </div>
           <div>
             <p className="font-semibold text-gray-900">{profile?.name}</p>
-            <p className="text-sm text-amber-600 font-medium">{profile?.points.toLocaleString()} points</p>
+            <p className="text-sm text-amber-600 font-medium">{(localPts[profile?.id] ?? profile?.points).toLocaleString()} points</p>
           </div>
           <button onClick={switchUser} disabled={switching}
             className="ml-auto flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50">
@@ -75,20 +90,32 @@ export function SettingsClient({ profile, family, members, appUrl }: Props) {
         </div>
 
         <div>
-          <label className="block text-xs text-gray-400 uppercase tracking-wide mb-2">Members</label>
+          <label className="block text-xs text-gray-400 uppercase tracking-wide mb-2">Members & points</label>
           <div className="space-y-2">
             {members.map(m => (
-              <div key={m.id} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
+              <div key={m.id} className="flex items-center gap-3 py-1">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
                   style={{ backgroundColor: m.avatar_color }}>
                   {m.name[0].toUpperCase()}
                 </div>
-                <span className="text-sm text-gray-700">{m.name}</span>
-                {m.id === profile?.id && <span className="text-xs text-indigo-400">(you)</span>}
-                <span className="ml-auto text-xs text-amber-600 font-medium">{m.points} pts</span>
+                <span className="text-sm text-gray-700 flex-1">{m.name}{m.id === profile?.id && <span className="text-xs text-indigo-400 ml-1">(you)</span>}</span>
+                <span className="text-xs text-amber-600 font-semibold">
+                  {(localPts[m.id] ?? m.points).toLocaleString()} pts
+                </span>
+                <button
+                  onClick={() => resetPoints(m.id)}
+                  disabled={resetting === m.id || (localPts[m.id] ?? m.points) === 0}
+                  title="Wipe points"
+                  className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 group"
+                >
+                  {resetDone === m.id
+                    ? <Check size={15} className="text-green-500" />
+                    : <RotateCcw size={15} className={`text-gray-300 group-hover:text-red-400 transition-colors ${resetting === m.id ? 'animate-spin' : ''}`} />}
+                </button>
               </div>
             ))}
           </div>
+          <p className="text-xs text-gray-400 mt-2">Tap the reset icon next to a member to wipe their points.</p>
         </div>
       </section>
 

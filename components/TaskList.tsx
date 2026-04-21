@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Zap, CheckCircle2 } from 'lucide-react'
+import { Plus, ListPlus, Zap, CheckCircle2 } from 'lucide-react'
 import { TaskCard } from './TaskCard'
 import { AddTaskModal } from './AddTaskModal'
+import { BulkAddModal } from './BulkAddModal'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, Profile, TaskFormData } from '@/types'
 import { format } from 'date-fns'
@@ -32,10 +33,11 @@ type Filter = typeof FILTERS[number]['key']
 const UNDO_SECONDS = 15
 
 export function TaskList({ initialTasks, members, currentUserId, familyId }: Props) {
-  const [tasks, setTasks]       = useState<Task[]>(initialTasks)
-  const [filter, setFilter]     = useState<Filter>('all')
-  const [showModal, setShowModal] = useState(false)
-  const [editTask, setEditTask]  = useState<Task | null>(null)
+  const [tasks, setTasks]         = useState<Task[]>(initialTasks)
+  const [filter, setFilter]       = useState<Filter>('all')
+  const [showModal, setShowModal]   = useState(false)
+  const [showBulk, setShowBulk]   = useState(false)
+  const [editTask, setEditTask]   = useState<Task | null>(null)
   const [undo, setUndo]          = useState<UndoState | null>(null)
   const [undoProgress, setUndoProgress] = useState(100)
   const undoTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -128,6 +130,21 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
+  async function handleBulkSave(taskForms: TaskFormData[]) {
+    const rows = taskForms.map(data => ({
+      title:           data.title,
+      notes:           data.notes || null,
+      assigned_to:     data.is_bounty ? null : (data.assigned_to || null),
+      due_at:          data.due_at ? new Date(`${data.due_at}T${data.due_time || '09:00'}`).toISOString() : null,
+      point_bounty:    data.point_bounty,
+      recurrence_rule: data.recurrence_rule || null,
+      is_bounty:       data.is_bounty,
+    }))
+    await fetch('/api/tasks/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) })
+    setShowBulk(false)
+    fetchTasks()
+  }
+
   function handleEdit(task: Task) { setEditTask(task); setShowModal(true) }
 
   const bounties = tasks.filter(t => t.is_bounty && t.status === 'pending')
@@ -194,7 +211,14 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
         </div>
       </div>
 
-      {/* ── FAB ────────────────────────────────────────────────── */}
+      {/* ── FABs ───────────────────────────────────────────────── */}
+      <button
+        onClick={() => setShowBulk(true)}
+        className="fixed bottom-36 right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-indigo-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
+        title="Bulk add tasks"
+      >
+        <ListPlus size={22} />
+      </button>
       <button
         onClick={() => { setEditTask(null); setShowModal(true) }}
         className="fixed bottom-20 right-4 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-2xl shadow-lg shadow-indigo-300 flex items-center justify-center transition-all z-40"
@@ -224,7 +248,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
         </div>
       )}
 
-      {/* ── Modal ──────────────────────────────────────────────── */}
+      {/* ── Single task modal ──────────────────────────────────── */}
       {showModal && (
         <AddTaskModal
           members={members}
@@ -232,6 +256,15 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
           editTask={editTask}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditTask(null) }}
+        />
+      )}
+
+      {/* ── Bulk add modal ─────────────────────────────────────── */}
+      {showBulk && (
+        <BulkAddModal
+          members={members}
+          onSave={handleBulkSave}
+          onClose={() => setShowBulk(false)}
         />
       )}
     </>

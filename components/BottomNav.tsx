@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CheckSquare, Trophy, Settings } from 'lucide-react'
+import { CheckSquare, Activity, Trophy, Settings } from 'lucide-react'
 
 const LINKS = [
   { href: '/',            label: 'Tasks',       icon: CheckSquare },
+  { href: '/activity',    label: 'Activity',    icon: Activity },
   { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { href: '/settings',    label: 'Settings',    icon: Settings },
 ]
