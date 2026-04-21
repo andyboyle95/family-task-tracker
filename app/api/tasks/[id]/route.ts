@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSession } from '@/lib/session'
+import { adjustPoints } from '@/lib/points'
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -59,7 +60,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (task.status === 'completed') {
     const awardedTo = task.assigned_to ?? task.completed_by
     if (awardedTo) {
-      await db.rpc('increment_points', { user_id: awardedTo, amount: -task.point_bounty })
+      await adjustPoints(awardedTo, -task.point_bounty)
     }
   }
 

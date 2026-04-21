@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSession } from '@/lib/session'
+import { adjustPoints } from '@/lib/points'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -23,7 +24,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   await Promise.all([
     db.from('tasks').update({ is_shared: true }).eq('id', id),
-    db.rpc('increment_points', { user_id: awardedTo, amount: -halfToRemove }),
+    adjustPoints(awardedTo, -halfToRemove),
   ])
 
   return NextResponse.json({ success: true, points_removed: halfToRemove })

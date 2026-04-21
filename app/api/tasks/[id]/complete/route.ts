@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSession } from '@/lib/session'
+import { adjustPoints } from '@/lib/points'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -14,15 +15,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (fetchError || !task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
   if (task.status === 'completed') return NextResponse.json({ error: 'Already completed' }, { status: 400 })
 
-  await db.from('tasks').update({
+  const { error: updateError } = await db.from('tasks').update({
     status: 'completed',
     completed_at: new Date().toISOString(),
     completed_by: session.userId,
   }).eq('id', id)
 
-  // Award points to assignee (or completer)
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+
+  // Award points to assignee (or completer for bounties)
   const awardTo = task.assigned_to ?? session.userId
-  await db.rpc('increment_points', { user_id: awardTo, amount: task.point_bounty })
+  await adjustPoints(awardTo, task.point_bounty)
 
   // Notify task creator if different from completer
   if (task.created_by !== session.userId) {
