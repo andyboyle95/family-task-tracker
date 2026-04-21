@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, Trash2, Repeat, Zap } from 'lucide-react'
+import { Pencil, Trash2, Repeat, Zap, RotateCcw } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '@/types'
 
 interface Props {
   task: Task
   onComplete: (id: string) => Promise<void>
+  onUncomplete: (id: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onEdit: (task: Task) => void
 }
@@ -80,10 +81,10 @@ function BountyCard({ task, onComplete, onDelete, onEdit }: Props) {
 }
 
 /* ── Regular task card ───────────────────────────────────────────────────── */
-export function TaskCard({ task, onComplete, onDelete, onEdit }: Props) {
+export function TaskCard({ task, onComplete, onUncomplete, onDelete, onEdit }: Props) {
   const [loading, setLoading] = useState(false)
 
-  if (task.is_bounty) return <BountyCard task={task} onComplete={onComplete} onDelete={onDelete} onEdit={onEdit} />
+  if (task.is_bounty) return <BountyCard task={task} onComplete={onComplete} onUncomplete={onUncomplete} onDelete={onDelete} onEdit={onEdit} />
 
   const isOverdue   = task.due_at && isPast(new Date(task.due_at)) && task.status !== 'completed'
   const isCompleted = task.status === 'completed'
@@ -95,8 +96,14 @@ export function TaskCard({ task, onComplete, onDelete, onEdit }: Props) {
     setLoading(false)
   }
 
+  async function handleUndo() {
+    setLoading(true)
+    await onUncomplete(task.id)
+    setLoading(false)
+  }
+
   return (
-    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-3 transition-all duration-200 ${isCompleted ? 'opacity-50' : 'hover:shadow-md'}`}>
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-3 transition-all duration-200 ${isCompleted ? 'opacity-60' : 'hover:shadow-md'}`}>
       {/* Checkbox */}
       <button onClick={handle} disabled={loading || isCompleted}
         className="mt-0.5 shrink-0 disabled:cursor-default group">
@@ -149,9 +156,16 @@ export function TaskCard({ task, onComplete, onDelete, onEdit }: Props) {
 
       {/* Actions */}
       <div className="flex flex-col gap-1 shrink-0 self-start">
-        <button onClick={() => onEdit(task)} className="p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors">
-          <Pencil size={13} />
-        </button>
+        {isCompleted ? (
+          <button onClick={handleUndo} disabled={loading} title="Undo completion"
+            className="p-1.5 text-gray-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50">
+            <RotateCcw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+        ) : (
+          <button onClick={() => onEdit(task)} className="p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors">
+            <Pencil size={13} />
+          </button>
+        )}
         <button onClick={() => onDelete(task.id)} className="p-1.5 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors">
           <Trash2 size={13} />
         </button>

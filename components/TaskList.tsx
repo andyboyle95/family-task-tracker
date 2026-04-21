@@ -125,6 +125,11 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
     fetchTasks()
   }
 
+  async function handleUncomplete(id: string) {
+    await fetch(`/api/tasks/${id}/uncomplete`, { method: 'POST' })
+    fetchTasks()
+  }
+
   async function handleDelete(id: string) {
     await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
     setTasks(prev => prev.filter(t => t.id !== id))
@@ -173,7 +178,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
             </div>
             <div className="space-y-3">
               {bounties.map(t => (
-                <TaskCard key={t.id} task={t} onComplete={handleComplete} onDelete={handleDelete} onEdit={handleEdit} />
+                <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
               ))}
             </div>
           </section>
@@ -204,14 +209,14 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
           )}
 
           {pending.map(t => (
-            <TaskCard key={t.id} task={t} onComplete={handleComplete} onDelete={handleDelete} onEdit={handleEdit} />
+            <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
           ))}
 
           {done.length > 0 && (
             <>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-3 pb-1">Completed</p>
               {done.map(t => (
-                <TaskCard key={t.id} task={t} onComplete={handleComplete} onDelete={handleDelete} onEdit={handleEdit} />
+                <TaskCard key={t.id} task={t} onComplete={handleComplete} onUncomplete={handleUncomplete} onDelete={handleDelete} onEdit={handleEdit} />
               ))}
             </>
           )}
