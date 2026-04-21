@@ -147,7 +147,14 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
 
   function handleEdit(task: Task) { setEditTask(task); setShowModal(true) }
 
-  const bounties = tasks.filter(t => t.is_bounty && t.status === 'pending')
+  // Only show bounties that are due today or earlier (or have no due date).
+  // This prevents tomorrow's recurring bounty from bleeding through after today's is claimed.
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
+  const bounties = tasks.filter(t =>
+    t.is_bounty &&
+    t.status === 'pending' &&
+    (!t.due_at || new Date(t.due_at) <= endOfToday)
+  )
   const pending  = tasks.filter(t => !t.is_bounty && t.status === 'pending')
   const done     = tasks.filter(t => !t.is_bounty && t.status === 'completed')
 

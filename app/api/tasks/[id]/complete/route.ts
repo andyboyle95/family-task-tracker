@@ -49,15 +49,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       const next = rule.after(new Date())
       if (next) {
         await db.from('tasks').insert({
-          family_id: task.family_id,
-          title: task.title,
-          notes: task.notes,
-          assigned_to: task.assigned_to,
-          created_by: task.created_by,
-          due_at: next.toISOString(),
-          point_bounty: task.point_bounty,
-          recurrence_rule: task.recurrence_rule,
+          family_id:            task.family_id,
+          title:                task.title,
+          notes:                task.notes,
+          assigned_to:          task.assigned_to,
+          created_by:           task.created_by,
+          due_at:               next.toISOString(),
+          point_bounty:         task.point_bounty,
+          recurrence_rule:      task.recurrence_rule,
           recurrence_parent_id: task.recurrence_parent_id ?? task.id,
+          is_bounty:            task.is_bounty,
         })
       }
     } catch {}
