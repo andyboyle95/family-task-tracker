@@ -2,136 +2,224 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import type { Profile, Family } from '@/types'
 
-const AVATAR_COLORS = [
-  '#4f46e5','#0891b2','#059669','#d97706','#dc2626',
-  '#7c3aed','#db2777','#0284c7','#16a34a','#ea580c',
-]
+type Step = 'entry' | 'pick-user' | 'new-user' | 'create-family'
 
-function randomColor() {
-  return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
+interface FamilyData {
+  family: Family
+  members: Profile[]
 }
 
 export default function JoinPage() {
+  const [step, setStep] = useState<Step>('entry')
   const [tab, setTab] = useState<'join' | 'create'>('join')
+
+  // Join flow
   const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState('')
+  const [codeLoading, setCodeLoading] = useState(false)
+  const [familyData, setFamilyData] = useState<FamilyData | null>(null)
+
+  // New member flow
+  const [newName, setNewName] = useState('')
+  const [newNameLoading, setNewNameLoading] = useState(false)
+
+  // Create family flow
   const [familyName, setFamilyName] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [yourName, setYourName] = useState('')
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createError, setCreateError] = useState('')
+
   const router = useRouter()
-  const supabase = createClient()
 
-  async function handleJoin(e: React.FormEvent) {
-    e.preventDefault()
-    setError(''); setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-
-    const { data: family } = await supabase
-      .from('families').select('id').eq('invite_code', code.trim().toUpperCase()).single()
-
-    if (!family) { setError('Invalid invite code. Check with your family.'); setLoading(false); return }
-
-    await supabase.from('profiles').update({
-      family_id: family.id,
-      avatar_color: randomColor(),
-    }).eq('id', user.id)
-
+  async function setSession(userId: string, familyId: string, userName: string) {
+    await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, familyId, userName }),
+    })
     router.push('/')
     router.refresh()
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
-    setError(''); setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+  async function lookupCode() {
+    if (code.length < 6) return
+    setCodeError('')
+    setCodeLoading(true)
+    const res = await fetch(`/api/families/${code}`)
+    if (!res.ok) { setCodeError('Invalid invite code — check with your family admin.'); setCodeLoading(false); return }
+    const data: FamilyData = await res.json()
+    setFamilyData(data)
+    setStep('pick-user')
+    setCodeLoading(false)
+  }
 
-    // Generate invite code
-    const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase()
+  async function selectUser(member: Profile) {
+    await setSession(member.id, familyData!.family.id, member.name)
+  }
 
-    const { data: family, error: familyError } = await supabase
-      .from('families').insert({ name: familyName.trim(), invite_code: inviteCode }).select('id').single()
+  async function addNewMember() {
+    if (!newName.trim()) return
+    setNewNameLoading(true)
+    const res = await fetch(`/api/families/${familyData!.family.invite_code}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    if (!res.ok) { setNewNameLoading(false); return }
+    const profile: Profile = await res.json()
+    await setSession(profile.id, familyData!.family.id, profile.name)
+  }
 
-    if (familyError || !family) {
-      setError('Could not create family. Try again.')
-      setLoading(false)
-      return
-    }
-
-    await supabase.from('profiles').update({
-      family_id: family.id,
-      role: 'admin',
-      avatar_color: randomColor(),
-    }).eq('id', user.id)
-
-    router.push('/')
-    router.refresh()
+  async function createFamily() {
+    if (!familyName.trim() || !yourName.trim()) return
+    setCreateError('')
+    setCreateLoading(true)
+    const res = await fetch('/api/families', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ familyName: familyName.trim(), yourName: yourName.trim() }),
+    })
+    if (!res.ok) { setCreateError('Could not create family. Try again.'); setCreateLoading(false); return }
+    const { family, profile } = await res.json()
+    await setSession(profile.id, family.id, profile.name)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
+
+        {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3">👨‍👩‍👧‍👦</div>
-          <h1 className="text-2xl font-bold text-gray-900">Set up your family</h1>
-          <p className="text-gray-500 text-sm mt-1">Join an existing family or start a new one</p>
+          <div className="text-5xl mb-3">✅</div>
+          <h1 className="text-2xl font-bold text-gray-900">Family Tasks</h1>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
-          {(['join', 'create'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-                tab === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t === 'join' ? 'Join family' : 'Create family'}
-            </button>
-          ))}
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">
-              {error}
+        {/* ── STEP: code entry / create toggle ─────────────────── */}
+        {step === 'entry' && (
+          <>
+            <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
+              {(['join', 'create'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    tab === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+                  }`}
+                >
+                  {t === 'join' ? 'Join family' : 'New family'}
+                </button>
+              ))}
             </div>
-          )}
 
-          {tab === 'join' ? (
-            <form onSubmit={handleJoin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Invite code</label>
-                <input
-                  type="text" required value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. A1B2C3" maxLength={6}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg text-center tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-                <p className="text-xs text-gray-400 mt-1 text-center">Get this from the family admin</p>
-              </div>
-              <button type="submit" disabled={loading || code.length < 6}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors">
-                {loading ? 'Joining…' : 'Join family'}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Family name</label>
-                <input
-                  type="text" required value={familyName} onChange={e => setFamilyName(e.target.value)}
-                  placeholder="e.g. The Smiths"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
-              </div>
-              <button type="submit" disabled={loading || !familyName.trim()}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors">
-                {loading ? 'Creating…' : 'Create family'}
-              </button>
-            </form>
-          )}
-        </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+              {tab === 'join' ? (
+                <>
+                  {codeError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                      {codeError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Invite code</label>
+                    <input
+                      type="text" value={code} maxLength={6}
+                      onChange={e => setCode(e.target.value.toUpperCase())}
+                      onKeyDown={e => e.key === 'Enter' && lookupCode()}
+                      placeholder="A1B2C3"
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-2xl text-center tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <p className="text-xs text-gray-400 mt-1 text-center">Get this from your family admin</p>
+                  </div>
+                  <button onClick={lookupCode} disabled={code.length < 6 || codeLoading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+                    {codeLoading ? 'Looking up…' : 'Continue →'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {createError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                      {createError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Family name</label>
+                    <input type="text" value={familyName} onChange={e => setFamilyName(e.target.value)}
+                      placeholder="e.g. The Smiths"
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Your name</label>
+                    <input type="text" value={yourName} onChange={e => setYourName(e.target.value)}
+                      placeholder="e.g. Sarah"
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <button onClick={createFamily} disabled={!familyName.trim() || !yourName.trim() || createLoading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+                    {createLoading ? 'Creating…' : 'Create family'}
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── STEP: pick who you are ────────────────────────────── */}
+        {step === 'pick-user' && familyData && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">{familyData.family.name}</h2>
+            <p className="text-sm text-gray-500 mb-6">Who are you?</p>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {familyData.members.map(member => (
+                <button key={member.id} onClick={() => selectUser(member)}
+                  className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-indigo-50 active:scale-95 transition-all">
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center text-white text-2xl font-bold"
+                    style={{ backgroundColor: member.avatar_color }}>
+                    {member.name[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700 text-center leading-tight">{member.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => setStep('new-user')}
+              className="w-full text-sm text-indigo-600 hover:text-indigo-700 py-2 border border-dashed border-indigo-200 rounded-xl hover:border-indigo-400 transition-colors">
+              + I&apos;m not listed — add me
+            </button>
+
+            <button onClick={() => setStep('entry')}
+              className="w-full text-xs text-gray-400 hover:text-gray-600 mt-2 py-1">
+              ← Back
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP: add new member ──────────────────────────────── */}
+        {step === 'new-user' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 mb-1">Add yourself</h2>
+              <p className="text-sm text-gray-500">Enter your name to join {familyData?.family.name}</p>
+            </div>
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder="Your name"
+              autoFocus
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button onClick={addNewMember} disabled={!newName.trim() || newNameLoading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+              {newNameLoading ? 'Joining…' : 'Join family'}
+            </button>
+            <button onClick={() => setStep('pick-user')}
+              className="w-full text-xs text-gray-400 hover:text-gray-600 py-1">
+              ← Back
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   )

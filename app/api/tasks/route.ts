@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { getSession } from '@/lib/session'
 
 export async function GET(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from('profiles').select('family_id').eq('id', user.id).single()
-  if (!profile?.family_id) return NextResponse.json({ error: 'No family' }, { status: 400 })
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const filter = searchParams.get('filter') ?? 'all'
+  const db = createAdminClient()
 
-  let query = supabase
+  let query = db
     .from('tasks')
     .select(`*, assignee:profiles!tasks_assigned_to_fkey(id,name,avatar_color), creator:profiles!tasks_created_by_fkey(id,name)`)
-    .eq('family_id', profile.family_id)
+    .eq('family_id', session.familyId)
     .neq('status', 'cancelled')
     .order('due_at', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
 
-  if (filter === 'mine') query = query.eq('assigned_to', user.id)
+  if (filter === 'mine') query = query.eq('assigned_to', session.userId)
   if (filter === 'today') {
     const start = new Date(); start.setHours(0, 0, 0, 0)
     const end = new Date(); end.setHours(23, 59, 59, 999)
@@ -38,27 +35,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from('profiles').select('family_id').eq('id', user.id).single()
-  if (!profile?.family_id) return NextResponse.json({ error: 'No family' }, { status: 400 })
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const body = await request.json()
   const { title, notes, assigned_to, due_at, point_bounty, recurrence_rule } = body
-
   if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 })
 
-  const { data: task, error } = await supabase
+  const db = createAdminClient()
+  const { data: task, error } = await db
     .from('tasks')
     .insert({
-      family_id: profile.family_id,
+      family_id: session.familyId,
       title: title.trim(),
       notes: notes || null,
       assigned_to: assigned_to || null,
-      created_by: user.id,
+      created_by: session.userId,
       due_at: due_at || null,
       point_bounty: point_bounty ?? 10,
       recurrence_rule: recurrence_rule || null,
@@ -68,8 +60,7 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Send push notification to assignee if different from creator
-  if (assigned_to && assigned_to !== user.id) {
+  if (assigned_to && assigned_to !== session.userId) {
     try {
       await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/send`, {
         method: 'POST',

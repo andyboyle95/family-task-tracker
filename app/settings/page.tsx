@@ -1,21 +1,19 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getSession } from '@/lib/session'
+import { createAdminClient } from '@/lib/supabase/server'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
 import { SettingsClient } from './SettingsClient'
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const session = await getSession()
+  if (!session) redirect('/join')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('*').eq('id', user.id).single()
-  if (!profile?.family_id) redirect('/join')
-
-  const [{ data: family }, { data: members }] = await Promise.all([
-    supabase.from('families').select('*').eq('id', profile.family_id).single(),
-    supabase.from('profiles').select('*').eq('family_id', profile.family_id),
+  const db = createAdminClient()
+  const [{ data: family }, { data: members }, { data: profile }] = await Promise.all([
+    db.from('families').select('*').eq('id', session.familyId).single(),
+    db.from('profiles').select('*').eq('family_id', session.familyId),
+    db.from('profiles').select('*').eq('id', session.userId).single(),
   ])
 
   return (
