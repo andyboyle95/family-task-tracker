@@ -28,6 +28,7 @@ export interface Task {
   due_at: string | null
   status: TaskStatus
   point_bounty: number
+  is_bounty: boolean
   recurrence_rule: string | null
   recurrence_parent_id: string | null
   completed_at: string | null
@@ -53,6 +54,7 @@ export interface NLPResult {
   assignee_name: string | null
   recurrence_rule: string | null
   point_bounty: number | null
+  is_bounty: boolean
 }
 
 export interface TaskFormData {
@@ -63,4 +65,5 @@ export interface TaskFormData {
   due_time: string
   recurrence_rule: string
   point_bounty: number
+  is_bounty: boolean
 }

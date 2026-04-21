@@ -11,11 +11,15 @@ export default async function LeaderboardPage() {
   if (!session) redirect('/join')
 
   const db = createAdminClient()
-  const { data: members } = await db.from('profiles').select('*').eq('family_id', session.familyId)
+  const [{ data: members }, { data: family }, { data: profile }] = await Promise.all([
+    db.from('profiles').select('*').eq('family_id', session.familyId),
+    db.from('families').select('name').eq('id', session.familyId).single(),
+    db.from('profiles').select('*').eq('id', session.userId).single(),
+  ])
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Leaderboard" subtitle="Family points" />
+      <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profile as Profile} />
       <main className="max-w-lg mx-auto px-4 pt-4 pb-32">
         <Leaderboard members={(members as Profile[]) ?? []} currentUserId={session.userId} />
       </main>

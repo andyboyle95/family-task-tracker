@@ -18,7 +18,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="Settings" />
+      <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profile as import('@/types').Profile} />
       <main className="max-w-lg mx-auto px-4 pt-4 pb-32 space-y-4">
         <SettingsClient
           profile={profile}

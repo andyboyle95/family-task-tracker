@@ -15,10 +15,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .update({
       title: body.title,
       notes: body.notes,
-      assigned_to: body.assigned_to || null,
+      assigned_to: body.is_bounty ? null : (body.assigned_to || null),
       due_at: body.due_at || null,
       point_bounty: body.point_bounty,
       recurrence_rule: body.recurrence_rule || null,
+      is_bounty: body.is_bounty ?? false,
     })
     .eq('id', id)
     .eq('family_id', session.familyId)

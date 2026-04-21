@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const body = await request.json()
-  const { title, notes, assigned_to, due_at, point_bounty, recurrence_rule } = body
+  const { title, notes, assigned_to, due_at, point_bounty, recurrence_rule, is_bounty } = body
   if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 })
 
   const db = createAdminClient()
@@ -49,11 +49,12 @@ export async function POST(request: NextRequest) {
       family_id: session.familyId,
       title: title.trim(),
       notes: notes || null,
-      assigned_to: assigned_to || null,
+      assigned_to: is_bounty ? null : (assigned_to || null),
       created_by: session.userId,
       due_at: due_at || null,
       point_bounty: point_bounty ?? 10,
       recurrence_rule: recurrence_rule || null,
+      is_bounty: is_bounty ?? false,
     })
     .select(`*, assignee:profiles!tasks_assigned_to_fkey(id,name,avatar_color)`)
     .single()
