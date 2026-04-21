@@ -13,7 +13,7 @@ export default async function ActivityPage() {
   const db = createAdminClient()
   const [{ data: tasks }, { data: profiles }, { data: family }, { data: profile }] = await Promise.all([
     db.from('tasks')
-      .select('id, title, point_bounty, is_bounty, completed_at, completed_by, assigned_to, family_id')
+      .select('id, title, point_bounty, is_bounty, is_shared, completed_at, completed_by, assigned_to, family_id')
       .eq('family_id', session.familyId)
       .eq('status', 'completed')
       .order('completed_at', { ascending: false })

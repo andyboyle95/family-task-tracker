@@ -33,6 +33,7 @@ export interface Task {
   recurrence_parent_id: string | null
   completed_at: string | null
   completed_by: string | null
+  is_shared: boolean
   created_at: string
   assignee?: Profile | null
   creator?: Profile | null

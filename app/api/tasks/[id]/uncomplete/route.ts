@@ -23,10 +23,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     completed_by: null,
   }).eq('id', id)
 
-  // Remove awarded points from whoever received them
+  // Remove only the points that were actually awarded (shared tasks only got half)
   const awardedTo = task.assigned_to ?? task.completed_by
   if (awardedTo) {
-    await db.rpc('increment_points', { user_id: awardedTo, amount: -task.point_bounty })
+    const effective = task.is_shared
+      ? Math.ceil(task.point_bounty / 2)
+      : task.point_bounty
+    await db.rpc('increment_points', { user_id: awardedTo, amount: -effective })
   }
 
   return NextResponse.json({ success: true })

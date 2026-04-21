@@ -9,7 +9,7 @@ export async function GET() {
   const db = createAdminClient()
   const { data, error } = await db
     .from('tasks')
-    .select('id, title, point_bounty, is_bounty, completed_at, completed_by, assigned_to, family_id')
+    .select('id, title, point_bounty, is_bounty, is_shared, completed_at, completed_by, assigned_to, family_id')
     .eq('family_id', session.familyId)
     .eq('status', 'completed')
     .order('completed_at', { ascending: false })
