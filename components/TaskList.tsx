@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, ListPlus, Zap, CheckCircle2 } from 'lucide-react'
+import { Plus, ListPlus, Zap, CheckCircle2, Sparkles } from 'lucide-react'
 import { TaskCard } from './TaskCard'
 import { AddTaskModal } from './AddTaskModal'
 import { BulkAddModal } from './BulkAddModal'
+import { LogWorkModal } from './LogWorkModal'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, Profile, TaskFormData } from '@/types'
 import { format } from 'date-fns'
@@ -107,6 +108,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
   const [filter, setFilter]       = useState<Filter>('all')
   const [showModal, setShowModal]   = useState(false)
   const [showBulk, setShowBulk]   = useState(false)
+  const [showLogWork, setShowLogWork] = useState(false)
   const [editTask, setEditTask]   = useState<Task | null>(null)
   const [undo, setUndo]          = useState<UndoState | null>(null)
   const [undoProgress, setUndoProgress] = useState(100)
@@ -309,6 +311,13 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
 
       {/* ── FABs ───────────────────────────────────────────────── */}
       <button
+        onClick={() => setShowLogWork(true)}
+        className="fixed bottom-52 right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-purple-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
+        title="Log work with AI"
+      >
+        <Sparkles size={20} />
+      </button>
+      <button
         onClick={() => setShowBulk(true)}
         className="fixed bottom-36 right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-indigo-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
         title="Bulk add tasks"
@@ -361,6 +370,15 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
           members={members}
           onSave={handleBulkSave}
           onClose={() => setShowBulk(false)}
+        />
+      )}
+
+      {/* ── Log work modal ─────────────────────────────────────── */}
+      {showLogWork && (
+        <LogWorkModal
+          members={members}
+          onClose={() => setShowLogWork(false)}
+          onSaved={() => fetchTasks()}
         />
       )}
     </>
