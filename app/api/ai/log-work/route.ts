@@ -5,8 +5,6 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic = 'force-dynamic'
 
-const anthropic = new Anthropic()
-
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
@@ -92,6 +90,12 @@ Output format:
     "reasoning": "matches task history at 10 pts"
   }
 ]`
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set on server' }, { status: 500 })
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
   try {
     const response = await anthropic.messages.create({
