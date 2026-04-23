@@ -9,6 +9,10 @@ export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured on server' }, { status: 500 })
+  }
+
   const { text } = await req.json()
   if (!text?.trim()) return NextResponse.json({ error: 'Text required' }, { status: 400 })
 
@@ -24,7 +28,7 @@ export async function POST(req: NextRequest) {
       .limit(300),
   ])
 
-  // Deduplicate task history → average points per task title
+  // Deduplicate task history -> average points per task title
   const taskRef = new Map<string, number[]>()
   for (const t of (history ?? [])) {
     const key = t.title.toLowerCase().trim()
@@ -43,57 +47,56 @@ export async function POST(req: NextRequest) {
     .map(m => `- ${m.name} (id: ${m.id})`)
     .join('\n')
 
-  const prompt = `You are a family chore point-award assistant. Parse the user's message into individual tasks and award points.
+  const today = new Date().toISOString().split('T')[0]
 
-CALIBRATION: 10 points ≈ 30 minutes of effort.
-Built-in reference:
-- Baby bottles: 10 pts
-- Baby bath: 10 pts
-- Cooking dinner: 10 pts
-- Cleaning up after dinner: 5 pts
-- Vacuuming / hoovering: 10 pts
-- Loading dishwasher: 5 pts
-- Unloading dishwasher: 5 pts
-- Putting bins out: 5 pts
-- Laundry (wash + dry): 10 pts
-- Ironing: 15 pts
-- Full house clean: 30 pts
-- Grocery shopping: 15 pts
-- Dog walk: 10 pts
-- Mowing lawn: 20 pts
+  const prompt = `You are a family task point-award assistant. Parse the input into individual task completions.
 
-FAMILY MEMBERS (map names from input to these IDs):
+POINT CALIBRATION (10 pts = 30 min):
+- 15 min = 5 pts, 30 min = 10 pts, 1 hr = 20 pts, 1.5 hr = 30 pts, 2 hr = 40 pts
+- Baby bottles: 10 pts, Baby bath: 10 pts, Cook dinner: 10 pts, Clean up dinner: 5 pts
+- Vacuuming: 10 pts, Dishwasher: 5 pts, Bins: 5 pts, Laundry: 10 pts, Ironing: 15 pts
+- Full house clean: 30 pts, Grocery shopping: 15 pts, Dog walk: 10 pts, Mow lawn: 20 pts
+
+FAMILY MEMBERS:
 ${membersList}
 
-DEFAULT PERSON if no name is mentioned: id ${session.userId}
+DEFAULT PERSON (if no name found): id ${session.userId}
 
-TASK HISTORY from this family (use these point values when the task matches):
-${taskContext || '(no history yet)'}
+TASK HISTORY (reference point values):
+${taskContext || '(none yet)'}
+
+TODAY'S DATE: ${today}
+
+INPUT FORMAT NOTE: Input may be free text OR structured lines like:
+  Person Name -- Task description -- Date -- Duration
+  Person Name - Task description - Date - Duration
+  (separators can be --, -, or the em-dash character)
+In structured lines, the FIRST field is always the person's name.
+If a duration is given (e.g. "1 hr", "15 min", "2 hours"), use it directly to calculate points.
+If a date is given (e.g. "Fri 24 Apr", "24/04", "tomorrow"), parse it to ISO date and include as completed_at.
 
 USER INPUT:
-"${text}"
+${text}
 
 Rules:
-1. Split into individual tasks — one entry per distinct task.
-2. If a name is mentioned (e.g. "Andy did the bottles"), assign to that person. Otherwise assign to the default person.
-3. Match against task history for point values; if no match, estimate using the calibration.
-4. Keep description concise (3–6 words).
-5. Return ONLY a JSON array, no prose.
+1. One entry per distinct task line/mention.
+2. Match person names to the family members list (fuzzy match — "Captain Neen" matches if that name is in the list).
+3. If a duration is explicit, use calibration to set points. Otherwise use task history or estimate.
+4. Keep description concise (keep the original task description, trim to ~6 words max).
+5. Return ONLY a valid JSON array, no other text.
 
 Output format:
 [
   {
-    "description": "Baby bottles",
-    "person_id": "uuid",
-    "person_name": "name",
+    "description": "task title",
+    "person_id": "uuid from members list",
+    "person_name": "their name",
     "points": 10,
-    "reasoning": "matches task history at 10 pts"
+    "completed_at": "2025-04-24T12:00:00.000Z",
+    "reasoning": "1 hr task = 20 pts"
   }
-]`
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set on server' }, { status: 500 })
-  }
+]
+Note: completed_at should be noon on the specified date if a date was given, otherwise omit the field.`
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -106,12 +109,16 @@ Output format:
 
     const raw = response.content[0].type === 'text' ? response.content[0].text : ''
     const match = raw.match(/\[[\s\S]*\]/)
-    if (!match) return NextResponse.json({ error: 'Could not parse AI response' }, { status: 500 })
+    if (!match) {
+      console.error('[log-work] No JSON array in response:', raw)
+      return NextResponse.json({ error: 'AI did not return valid JSON' }, { status: 500 })
+    }
 
     const items = JSON.parse(match[0])
     return NextResponse.json(items)
-  } catch (e) {
-    console.error('[log-work] AI error:', e)
-    return NextResponse.json({ error: 'AI parsing failed' }, { status: 500 })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[log-work] error:', msg)
+    return NextResponse.json({ error: `AI error: ${msg}` }, { status: 500 })
   }
 }

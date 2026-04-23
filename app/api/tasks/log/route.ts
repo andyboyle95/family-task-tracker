@@ -7,6 +7,7 @@ interface LogItem {
   description: string
   person_id: string
   points: number
+  completed_at?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
       completed_by: item.person_id,
       point_bounty: item.points,
       status:       'completed',
-      completed_at: now,
+      completed_at: item.completed_at ?? now,
     })
 
     await adjustPoints(item.person_id, item.points)

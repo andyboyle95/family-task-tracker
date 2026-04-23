@@ -9,6 +9,7 @@ interface ParsedItem {
   person_id: string
   person_name: string
   points: number
+  completed_at?: string
   reasoning: string
 }
 
@@ -106,7 +107,7 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
     }
   }
 
-  function updateField(index: number, field: 'description' | 'points' | 'person_id', value: string | number) {
+  function updateField(index: number, field: 'description' | 'points' | 'person_id' | 'completed_at', value: string | number) {
     setItems(prev => prev?.map((item, i) => {
       if (i !== index) return item
       if (field === 'person_id') {
@@ -246,6 +247,19 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                       <span className="text-xs text-amber-600">pts</span>
                     </div>
                   </div>
+
+                  {/* Date override */}
+                  {item.completed_at && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-400">Date:</span>
+                      <input
+                        type="date"
+                        value={item.completed_at.split('T')[0]}
+                        onChange={e => updateField(i, 'completed_at', e.target.value ? `${e.target.value}T12:00:00.000Z` : '')}
+                        className="text-[10px] text-gray-600 bg-transparent border-b border-gray-200 focus:border-indigo-400 focus:outline-none"
+                      />
+                    </div>
+                  )}
 
                   <p className="text-[10px] text-gray-400 italic leading-relaxed">{item.reasoning}</p>
                 </div>
