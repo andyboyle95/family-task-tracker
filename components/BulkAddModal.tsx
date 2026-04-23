@@ -21,19 +21,80 @@ function emptyForm(raw: string): TaskFormData {
   return { title: raw.slice(0, 40), notes: '', assigned_to: '', due_at: '', due_time: '', recurrence_rule: '', point_bounty: 10, is_bounty: false }
 }
 
-export function BulkAddModal({ members, onSave, onClose }: Props) {
-  const [input,   setInput]   = useState('')
-  const [parsing, setParsing] = useState(false)
-  const [tasks,   setTasks]   = useState<ParsedTask[]>([])
-  const [saving,  setSaving]  = useState(false)
+/* ── Helpers for structured "Person — Task — Date — Duration" lines ──── */
+function durationToPts(s: string): number | null {
+  const hr  = s.match(/(\d+(?:\.\d+)?)\s*(?:hr|hour)/i)
+  const min = s.match(/(\d+)\s*(?:min|minute)/i)
+  if (hr)  return Math.round(parseFloat(hr[1]) * 20)
+  if (min) return Math.round(parseInt(min[1]) / 30 * 10)
+  return null
+}
 
-  async function handleParse() {
-    const lines = input.split('\n').map(l => l.trim()).filter(l => l.length >= 2)
-    if (!lines.length) return
-    setParsing(true)
+function parseIsoDate(s: string): string | null {
+  const months: Record<string,string> = {
+    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+  }
+  // "Fri 24 Apr" or "24 Apr"
+  const named = s.match(/(?:\w+\s+)?(\d{1,2})\s+([a-z]{3})/i) ?? s.match(/([a-z]{3})\s+(\d{1,2})/i)
+  if (named) {
+    const [d, m] = /\d/.test(named[1]) ? [named[1], named[2]] : [named[2], named[1]]
+    const mo = months[m.toLowerCase().slice(0,3)]
+    if (mo) return `${new Date().getFullYear()}-${mo}-${d.padStart(2,'0')}`
+  }
+  // numeric 24/04 or 2025-04-24
+  const num = s.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-]\d{2,4})?$/)
+  if (num) return `${new Date().getFullYear()}-${num[2].padStart(2,'0')}-${num[1].padStart(2,'0')}`
+  return null
+}
 
-    const results = await Promise.all(
-      lines.map(async (line): Promise<ParsedTask> => {
+function fuzzyMember(name: string, members: Profile[]): Profile | null {
+  const n = name.toLowerCase().trim()
+  return (
+    members.find(m => m.name.toLowerCase() === n) ??
+    members.find(m => m.name.toLowerCase().startsWith(n) || n.startsWith(m.name.toLowerCase())) ??
+    members.find(m => n.split(/\s+/).some(w => w.length > 2 && m.name.toLowerCase().includes(w))) ??
+    null
+  )
+}
+
+function tryParseStructuredLine(line: string, members: Profile[]): ParsedTask | null {
+  const parts = line.split(/\s*(?:—|--|–|-(?=\s))\s*/).map(p => p.trim()).filter(Boolean)
+  if (parts.length < 2) return null
+  const member = fuzzyMember(parts[0], members)
+  if (!member) return null
+
+  let pts: number | null = null
+  let dateStr: string | null = null
+  for (let i = 2; i < parts.length; i++) {
+    if (pts === null)     { const p = durationToPts(parts[i]);  if (p !== null) { pts = p; continue } }
+    if (dateStr === null) { const d = parseIsoDate(parts[i]);   if (d !== null) { dateStr = d; continue } }
+  }
+
+  return {
+    raw: line,
+    included: true,
+    form: {
+      title:           parts[1],
+      notes:           '',
+      assigned_to:     member.id,
+      due_at:          dateStr ?? '',
+      due_time:        dateStr ? '09:00' : '',
+      recurrence_rule: '',
+      point_bounty:    pts ?? 10,
+      is_bounty:       false,
+    },
+  }
+}
+
+/* ── Batched NLP calls (max 5 in flight at once) ─────────────────────── */
+async function batchNlp(lines: string[], members: Profile[]): Promise<ParsedTask[]> {
+  const results: ParsedTask[] = []
+  const BATCH = 5
+  for (let i = 0; i < lines.length; i += BATCH) {
+    const chunk = lines.slice(i, i + BATCH)
+    const chunkResults = await Promise.all(
+      chunk.map(async (line): Promise<ParsedTask> => {
         try {
           const res = await fetch('/api/nlp', {
             method: 'POST',
@@ -64,8 +125,33 @@ export function BulkAddModal({ members, onSave, onClose }: Props) {
         }
       })
     )
+    results.push(...chunkResults)
+  }
+  return results
+}
 
-    setTasks(results)
+export function BulkAddModal({ members, onSave, onClose }: Props) {
+  const [input,   setInput]   = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [tasks,   setTasks]   = useState<ParsedTask[]>([])
+  const [saving,  setSaving]  = useState(false)
+
+  async function handleParse() {
+    const lines = input.split('\n').map(l => l.trim()).filter(l => l.length >= 2)
+    if (!lines.length) return
+    setParsing(true)
+
+    const structured: ParsedTask[] = []
+    const nlpLines:   string[]     = []
+
+    for (const line of lines) {
+      const s = tryParseStructuredLine(line, members)
+      if (s) structured.push(s)
+      else   nlpLines.push(line)
+    }
+
+    const nlpResults = nlpLines.length > 0 ? await batchNlp(nlpLines, members) : []
+    setTasks([...structured, ...nlpResults])
     setParsing(false)
   }
 
