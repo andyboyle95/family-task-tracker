@@ -79,11 +79,11 @@ USER INPUT:
 ${text}
 
 Rules:
-1. One entry per distinct task line/mention.
-2. Match person names to the family members list (fuzzy match — "Captain Neen" matches if that name is in the list).
-3. If a duration is explicit, use calibration to set points. Otherwise use task history or estimate.
-4. Keep description concise (keep the original task description, trim to ~6 words max).
-5. Return ONLY a valid JSON array, no other text.
+1. Process EVERY line — even if there are 30+ lines, output one JSON object per line. Do not skip any.
+2. For structured lines (Person -- Task -- Date -- Duration): the FIRST field is ALWAYS the person's name. Match it to the family members list. If "Captain Neen" is in the list, any line starting with "Captain Neen" gets assigned to that person's id.
+3. If a duration is explicit, use calibration to calculate points. Otherwise use task history or estimate.
+4. Keep description concise (preserve original task description, trim to ~8 words).
+5. Return ONLY a valid JSON array, no other text, no explanation.
 
 Output format:
 [
@@ -103,7 +103,7 @@ Note: completed_at should be noon on the specified date if a date was given, oth
   try {
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }],
     })
 
