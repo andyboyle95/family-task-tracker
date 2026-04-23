@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, ListPlus, Zap, CheckCircle2, Sparkles } from 'lucide-react'
+import { Plus, ListPlus, Zap, CheckCircle2, Sparkles, LayoutGrid, List } from 'lucide-react'
 import { TaskCard } from './TaskCard'
 import { AddTaskModal } from './AddTaskModal'
 import { BulkAddModal } from './BulkAddModal'
 import { LogWorkModal } from './LogWorkModal'
+import { KanbanView } from './KanbanView'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, Profile, TaskFormData } from '@/types'
 import { format } from 'date-fns'
@@ -106,10 +107,11 @@ function GroupedTaskList({ pending, done, members, currentUserId, onComplete, on
 export function TaskList({ initialTasks, members, currentUserId, familyId }: Props) {
   const [tasks, setTasks]         = useState<Task[]>(initialTasks)
   const [filter, setFilter]       = useState<Filter>('all')
-  const [showModal, setShowModal]   = useState(false)
-  const [showBulk, setShowBulk]   = useState(false)
+  const [showModal, setShowModal]     = useState(false)
+  const [showBulk, setShowBulk]       = useState(false)
   const [showLogWork, setShowLogWork] = useState(false)
-  const [editTask, setEditTask]   = useState<Task | null>(null)
+  const [editTask, setEditTask]       = useState<Task | null>(null)
+  const [viewMode, setViewMode]       = useState<'list' | 'kanban'>('list')
   const [undo, setUndo]          = useState<UndoState | null>(null)
   const [undoProgress, setUndoProgress] = useState(100)
   const undoTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -256,22 +258,52 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
           </section>
         )}
 
-        {/* ── Filter tabs ────────────────────────────────────────── */}
-        <div className="flex gap-1.5 overflow-x-auto px-4 scrollbar-hide">
-          {FILTERS.map(f => (
-            <button key={f.key} onClick={() => handleFilterChange(f.key)}
-              className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                filter === f.key
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-indigo-300'
-              }`}>
-              {f.label}
+        {/* ── Filter tabs + view toggle ──────────────────────────── */}
+        <div className="flex items-center gap-2 px-4">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide flex-1">
+            {FILTERS.map(f => (
+              <button key={f.key} onClick={() => handleFilterChange(f.key)}
+                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  filter === f.key
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                    : 'bg-white text-gray-500 border border-gray-200 hover:border-indigo-300'
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex shrink-0 bg-white border border-gray-200 rounded-full p-0.5 gap-0.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-full transition-all ${viewMode === 'list' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+              title="List view"
+            >
+              <List size={14} />
             </button>
-          ))}
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`p-1.5 rounded-full transition-all ${viewMode === 'kanban' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Kanban view"
+            >
+              <LayoutGrid size={14} />
+            </button>
+          </div>
         </div>
 
+        {/* ── Kanban view ────────────────────────────────────────── */}
+        {viewMode === 'kanban' && (
+          <KanbanView
+            tasks={tasks}
+            members={members}
+            currentUserId={currentUserId}
+            onComplete={handleComplete}
+            onUncomplete={handleUncomplete}
+            onEdit={handleEdit}
+          />
+        )}
+
         {/* ── Task list ──────────────────────────────────────────── */}
-        <div className="px-4 space-y-2.5">
+        {viewMode === 'list' && <div className="px-4 space-y-2.5">
           {pending.length === 0 && done.length === 0 && bounties.length === 0 && (
             <div className="text-center py-16">
               <p className="text-5xl mb-3">🎉</p>
@@ -306,7 +338,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
               )}
             </>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* ── FABs ───────────────────────────────────────────────── */}
