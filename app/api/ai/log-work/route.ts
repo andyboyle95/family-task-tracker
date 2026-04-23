@@ -172,26 +172,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Items with known duration don't need AI; others do
-  const needsAI = structured.filter(s => s.points === null)
-  const ready   = structured.filter(s => s.points !== null)
+  // ── Phase 2: resolve missing points without AI where possible ──
+  // For structured lines with no duration: look up task history, else default 10 pts.
+  // AI is only called for genuinely free-text lines (no detected person separator).
+  const resolvedStructured = structured.map(s => {
+    if (s.points !== null) return { ...s, points: s.points, reasoning: `Duration → ${s.points} pts` }
 
-  // ── Phase 2: call AI only for tasks that need point estimation ──
+    // Check task history for a matching title
+    const key = s.description.toLowerCase().trim()
+    const histEntry = taskRef.get(key)
+    if (histEntry) {
+      const avg = Math.round(histEntry.reduce((a, b) => a + b, 0) / histEntry.length)
+      return { ...s, points: avg, reasoning: `Matched history at ${avg} pts` }
+    }
+
+    // Partial history match (first 4 words)
+    const words = key.split(/\s+/).slice(0, 4).join(' ')
+    const partialKey = [...taskRef.keys()].find(k => k.startsWith(words) || words.startsWith(k.split(/\s+/).slice(0, 4).join(' ')))
+    if (partialKey) {
+      const hist = taskRef.get(partialKey)!
+      const avg = Math.round(hist.reduce((a, b) => a + b, 0) / hist.length)
+      return { ...s, points: avg, reasoning: `Similar to history at ${avg} pts` }
+    }
+
+    return { ...s, points: 10, reasoning: 'Estimated 30 min — adjust if needed' }
+  })
+
+  // ── Phase 3: call AI only for free-text lines ──
   let aiItems: {
     description: string; person_id: string; person_name: string
     points: number; completed_at?: string; reasoning: string
   }[] = []
 
-  const aiInputLines = [
-    ...needsAI.map(s => s.line),
-    ...freeTextLines,
-  ]
-
-  if (aiInputLines.length > 0) {
+  if (freeTextLines.length > 0) {
     const membersList = memberList.map(m => `- ${m.name} (id: ${m.id})`).join('\n')
     const today = new Date().toISOString().split('T')[0]
 
-    const prompt = `Parse these task entries and return points for each.
+    const prompt = `Parse these free-text task entries and return points for each.
 
 CALIBRATION: 10 pts = 30 min. 15 min=5pts, 30 min=10pts, 1hr=20pts, 2hr=40pts.
 
@@ -205,10 +222,10 @@ ${taskContext || '(none)'}
 TODAY: ${today}
 
 INPUT (one task per line):
-${aiInputLines.join('\n')}
+${freeTextLines.join('\n')}
 
 Return ONLY a JSON array with one object per input line, in order:
-[{"description":"short title","person_id":"uuid","person_name":"name","points":10,"completed_at":"ISO or null","reasoning":"why these points"}]`
+[{"description":"short title","person_id":"uuid","person_name":"name","points":10,"completed_at":"ISO or null","reasoning":"brief reason"}]`
 
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -220,38 +237,29 @@ Return ONLY a JSON array with one object per input line, in order:
 
       const raw = response.content[0].type === 'text' ? response.content[0].text : ''
       const match = raw.match(/\[[\s\S]*\]/)
-      if (match) {
-        const parsed = JSON.parse(match[0])
-        // Override person_id for structured lines where we already resolved the person
-        aiItems = parsed.map((item: typeof aiItems[0], idx: number) => {
-          const src = needsAI[idx]
-          if (src) {
-            return {
-              ...item,
-              person_id:   src.person_id,
-              person_name: src.person_name,
-              completed_at: item.completed_at ?? src.completed_at ?? undefined,
-            }
-          }
-          return item
-        })
-      }
+      if (match) aiItems = JSON.parse(match[0])
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       console.error('[log-work] AI error:', msg)
-      // Don't 500 — return whatever we already parsed deterministically
+      // Fall back: add free-text lines with 10 pts default
+      aiItems = freeTextLines.map(line => ({
+        description: line.slice(0, 80),
+        person_id: session.userId,
+        person_name: 'You',
+        points: 10,
+        reasoning: 'AI unavailable — estimated',
+      }))
     }
   }
 
-  // ── Merge results in original order ──
   const result = [
-    ...ready.map(s => ({
+    ...resolvedStructured.map(s => ({
       description:  s.description,
       person_id:    s.person_id,
       person_name:  s.person_name,
-      points:       s.points!,
+      points:       s.points,
       completed_at: s.completed_at ?? undefined,
-      reasoning:    `Duration → ${s.points} pts`,
+      reasoning:    s.reasoning,
     })),
     ...aiItems,
   ]
