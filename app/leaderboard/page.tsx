@@ -7,11 +7,11 @@ import { Leaderboard, type MemberStats, type ChartDay, type CategoryTotal } from
 import type { Profile } from '@/types'
 
 const CATEGORY_DEFS = [
-  { label: 'Cooking & Meals',  emoji: '👨‍🍳', regex: /cook|dinner|lunch|breakfast|meal|food|kitchen|recipe|tea|supper/ },
-  { label: 'Cleaning',         emoji: '🧹', regex: /clean|hoover|vacuum|sweep|mop|wipe|bathroom|toilet|shower|loo|tidy/ },
-  { label: 'Laundry',          emoji: '👕', regex: /laundry|wash(ing)?|clothes|iron|fold|dry/ },
-  { label: 'Shopping',         emoji: '🛒', regex: /shop|groceri|grocery|tesco|asda|sainsbury|amazon|order|purchas|supermarket/ },
-  { label: 'Childcare',        emoji: '👶', regex: /child|school|kids?|homework|bedtime|nap|pick.?up|drop.?off|bath.*(kid|child)/ },
+  { label: 'DIY & Installations', emoji: '🔨', regex: /install|fix|hang|repair|treat|scarif|hook|bulb|bracket|u-bend|shelf|curtain|put up|wire|plumb|electric/ },
+  { label: 'Decorating',          emoji: '🎨', regex: /paint|refurb|redesign|decor|renovati|refit|stain|wallpaper/ },
+  { label: 'Decluttering',        emoji: '📦', regex: /sort|rationalise|rationalis|organis|tidy|declutter|donate|sell|return|clear|cupboard|cabinet|clothes|tupperware|frames?|ottoman/ },
+  { label: 'Shopping & Orders',   emoji: '🛒', regex: /order|buy|purchas|shop|groceri|grocery|tesco|asda|sainsbury|amazon|get the|collect|pick up/ },
+  { label: 'Admin & Planning',    emoji: '📋', regex: /book|confirm|decide|research|plan|oversee|receiv|deliver|coordinat|visit|choos|measure|quote/ },
 ]
 
 interface HistoryTask {
