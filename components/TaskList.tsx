@@ -111,7 +111,9 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
   const [showBulk, setShowBulk]       = useState(false)
   const [showLogWork, setShowLogWork] = useState(false)
   const [editTask, setEditTask]       = useState<Task | null>(null)
-  const [viewMode, setViewMode]       = useState<'list' | 'kanban'>('list')
+  const [viewMode, setViewMode]       = useState<'list' | 'kanban'>(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 768 ? 'kanban' : 'list'
+  )
   const [undo, setUndo]          = useState<UndoState | null>(null)
   const [undoProgress, setUndoProgress] = useState(100)
   const undoTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)

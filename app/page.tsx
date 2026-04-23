@@ -32,7 +32,7 @@ export default async function HomePage() {
         currentUser={profile as Profile}
         right={<PushManager />}
       />
-      <main className="max-w-lg mx-auto pt-4">
+      <main className="max-w-7xl mx-auto pt-4">
         <TaskList
           initialTasks={(tasks as Task[]) ?? []}
           members={(members as Profile[]) ?? []}

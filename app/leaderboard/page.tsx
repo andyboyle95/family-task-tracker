@@ -3,8 +3,16 @@ import { getSession } from '@/lib/session'
 import { createAdminClient } from '@/lib/supabase/server'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
-import { Leaderboard, type MemberStats, type ChartDay } from '@/components/Leaderboard'
+import { Leaderboard, type MemberStats, type ChartDay, type CategoryTotal } from '@/components/Leaderboard'
 import type { Profile } from '@/types'
+
+const CATEGORY_DEFS = [
+  { label: 'Cooking & Meals',  emoji: '👨‍🍳', regex: /cook|dinner|lunch|breakfast|meal|food|kitchen|recipe|tea|supper/ },
+  { label: 'Cleaning',         emoji: '🧹', regex: /clean|hoover|vacuum|sweep|mop|wipe|bathroom|toilet|shower|loo|tidy/ },
+  { label: 'Laundry',          emoji: '👕', regex: /laundry|wash(ing)?|clothes|iron|fold|dry/ },
+  { label: 'Shopping',         emoji: '🛒', regex: /shop|groceri|grocery|tesco|asda|sainsbury|amazon|order|purchas|supermarket/ },
+  { label: 'Childcare',        emoji: '👶', regex: /child|school|kids?|homework|bedtime|nap|pick.?up|drop.?off|bath.*(kid|child)/ },
+]
 
 interface HistoryTask {
   id: string
@@ -78,6 +86,18 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
   })
 }
 
+function buildCategories(history: HistoryTask[]): CategoryTotal[] {
+  return CATEGORY_DEFS.map(def => {
+    const matching = history.filter(t => def.regex.test(t.title.toLowerCase()))
+    return {
+      label: def.label,
+      emoji: def.emoji,
+      points: matching.reduce((s, t) => s + effectivePts(t), 0),
+      count: matching.length,
+    }
+  }).sort((a, b) => b.points - a.points)
+}
+
 function buildChartData(profiles: Profile[], history: HistoryTask[]): ChartDay[] {
   const days: string[] = []
   for (let i = 13; i >= 0; i--) {
@@ -119,15 +139,17 @@ export default async function LeaderboardPage() {
       .order('completed_at', { ascending: true }),
   ])
 
-  const profiles = (members ?? []) as Profile[]
-  const stats    = buildStats(profiles, (history ?? []) as HistoryTask[])
-  const chart    = buildChartData(profiles, (history ?? []) as HistoryTask[])
+  const profiles   = (members ?? []) as Profile[]
+  const hist       = (history ?? []) as HistoryTask[]
+  const stats      = buildStats(profiles, hist)
+  const chart      = buildChartData(profiles, hist)
+  const categories = buildCategories(hist)
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profile as Profile} />
-      <main className="max-w-lg mx-auto px-4 pt-4 pb-32">
-        <Leaderboard stats={stats} currentUserId={session.userId} chartData={chart} />
+      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 pb-32 md:pb-8">
+        <Leaderboard stats={stats} currentUserId={session.userId} chartData={chart} categories={categories} />
       </main>
       <BottomNav />
     </div>

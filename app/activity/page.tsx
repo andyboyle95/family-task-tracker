@@ -26,7 +26,7 @@ export default async function ActivityPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profile as Profile} />
-      <main className="max-w-lg mx-auto px-4 pt-4 pb-32">
+      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 pb-32 md:pb-8">
         <ActivityClient
           initialTasks={tasks ?? []}
           profiles={profiles ?? []}

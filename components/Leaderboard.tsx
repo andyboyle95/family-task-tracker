@@ -19,10 +19,18 @@ export interface ChartDay {
   byUser: Record<string, number>
 }
 
+export interface CategoryTotal {
+  label: string
+  emoji: string
+  points: number
+  count: number
+}
+
 interface Props {
   stats: MemberStats[]
   currentUserId: string
   chartData: ChartDay[]
+  categories: CategoryTotal[]
 }
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -88,16 +96,51 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
   )
 }
 
+/* ── Category breakdown section ────────────────────────────────────────── */
+function CategoryBreakdown({ categories }: { categories: CategoryTotal[] }) {
+  const maxPts = Math.max(...categories.map(c => c.points), 1)
+  const visible = categories.filter(c => c.count > 0)
+
+  if (visible.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-4">
+      <p className="text-sm font-semibold text-gray-900 mb-4">Top task categories</p>
+      <div className="space-y-3">
+        {visible.map((cat, i) => {
+          const pct = Math.round((cat.points / maxPts) * 100)
+          const rankColors = ['bg-amber-400', 'bg-gray-300', 'bg-amber-600', 'bg-indigo-400', 'bg-emerald-400']
+          return (
+            <div key={cat.label}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base leading-none">{cat.emoji}</span>
+                <span className="text-sm font-medium text-gray-800 flex-1">{cat.label}</span>
+                <span className="text-xs text-gray-400">{cat.count} task{cat.count !== 1 ? 's' : ''}</span>
+                <span className="text-xs font-bold text-amber-600 w-16 text-right">{cat.points.toLocaleString()} pts</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${rankColors[i] ?? 'bg-indigo-400'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ── Main component ─────────────────────────────────────────────────────── */
-export function Leaderboard({ stats, currentUserId, chartData }: Props) {
+export function Leaderboard({ stats, currentUserId, chartData, categories }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const sorted = [...stats].sort((a, b) => b.points_alltime - a.points_alltime)
   const me = stats.find(s => s.profile.id === currentUserId)
 
-  return (
+  const leftCol = (
     <div className="space-y-5">
-
-      {/* ── Your stats banner ──────────────────────────────────── */}
+      {/* ── Your stats banner ────────────────────────────────── */}
       {me && (
         <div className="bg-indigo-600 rounded-2xl p-4 text-white">
           <p className="text-xs font-semibold text-indigo-200 uppercase tracking-wide mb-3">Your performance</p>
@@ -116,7 +159,7 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
         </div>
       )}
 
-      {/* ── Rankings ───────────────────────────────────────────── */}
+      {/* ── Rankings ─────────────────────────────────────────── */}
       <div className="space-y-2">
         {sorted.map((s, i) => {
           const isMe       = s.profile.id === currentUserId
@@ -215,8 +258,12 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
           <p className="text-center text-gray-400 py-10">No family members yet.</p>
         )}
       </div>
+    </div>
+  )
 
-      {/* ── Points race chart ──────────────────────────────────── */}
+  const rightCol = (
+    <div className="space-y-5">
+      {/* ── Points race chart ──────────────────────────────── */}
       {sorted.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-sm font-semibold text-gray-900 mb-1">Points race — last 14 days</p>
@@ -233,6 +280,25 @@ export function Leaderboard({ stats, currentUserId, chartData }: Props) {
           <p className="text-[10px] text-gray-300 text-right mt-1">Cumulative pts earned</p>
         </div>
       )}
+
+      {/* ── Category breakdown ─────────────────────────────── */}
+      <CategoryBreakdown categories={categories} />
     </div>
+  )
+
+  return (
+    <>
+      {/* Mobile: stacked */}
+      <div className="md:hidden space-y-5">
+        {leftCol}
+        {rightCol}
+      </div>
+
+      {/* Desktop: 2-column grid */}
+      <div className="hidden md:grid md:grid-cols-[1fr_380px] md:gap-6 md:items-start">
+        {leftCol}
+        {rightCol}
+      </div>
+    </>
   )
 }
