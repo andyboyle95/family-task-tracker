@@ -242,8 +242,8 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
   return (
     <>
       <div className="pb-32 space-y-5">
-        {/* ── Daily bounties section ─────────────────────────────── */}
-        {bounties.length > 0 && (
+        {/* ── Daily bounties section — hidden in kanban (bounties live in first column) */}
+        {bounties.length > 0 && viewMode !== 'kanban' && (
           <section className="px-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="flex items-center gap-1.5 bg-amber-100 text-amber-700 px-3 py-1 rounded-full">
@@ -260,9 +260,10 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
           </section>
         )}
 
-        {/* ── Filter tabs + view toggle ──────────────────────────── */}
+        {/* ── Toolbar: filter tabs + view toggle ────────────────── */}
         <div className="flex items-center gap-2 px-4">
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide flex-1">
+          {/* Filter tabs — always on mobile, hidden on desktop kanban */}
+          <div className={`flex gap-1.5 overflow-x-auto scrollbar-hide flex-1 ${viewMode === 'kanban' ? 'md:hidden' : ''}`}>
             {FILTERS.map(f => (
               <button key={f.key} onClick={() => handleFilterChange(f.key)}
                 className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
@@ -274,6 +275,8 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
               </button>
             ))}
           </div>
+          {/* Spacer on desktop kanban so toggle stays right */}
+          {viewMode === 'kanban' && <div className="hidden md:block flex-1" />}
           <div className="flex shrink-0 bg-white border border-gray-200 rounded-full p-0.5 gap-0.5">
             <button
               onClick={() => setViewMode('list')}
@@ -346,28 +349,28 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
       {/* ── FABs ───────────────────────────────────────────────── */}
       <button
         onClick={() => setShowLogWork(true)}
-        className="fixed bottom-52 right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-purple-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
+        className="fixed bottom-52 md:bottom-[140px] right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-purple-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
         title="Log work with AI"
       >
         <Sparkles size={20} />
       </button>
       <button
         onClick={() => setShowBulk(true)}
-        className="fixed bottom-36 right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-indigo-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
+        className="fixed bottom-36 md:bottom-[76px] right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-indigo-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
         title="Bulk add tasks"
       >
         <ListPlus size={22} />
       </button>
       <button
         onClick={() => { setEditTask(null); setShowModal(true) }}
-        className="fixed bottom-20 right-4 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-2xl shadow-lg shadow-indigo-300 flex items-center justify-center transition-all z-40"
+        className="fixed bottom-20 md:bottom-6 right-4 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-2xl shadow-lg shadow-indigo-300 flex items-center justify-center transition-all z-40"
       >
         <Plus size={26} strokeWidth={2.5} />
       </button>
 
       {/* ── Undo toast ─────────────────────────────────────────── */}
       {undo && (
-        <div className="fixed bottom-20 left-4 right-4 max-w-lg mx-auto z-50 animate-slide-up">
+        <div className="fixed bottom-20 md:bottom-24 left-4 right-20 md:right-24 max-w-lg z-50 animate-slide-up">
           <div className="bg-gray-900 text-white rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-xl">
             <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
             <div className="flex-1 min-w-0">
