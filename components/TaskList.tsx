@@ -226,6 +226,15 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
     fetchTasks()
   }
 
+  async function handleUpdate(id: string, patch: { title?: string; point_bounty?: number }) {
+    await fetch(`/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    fetchTasks()
+  }
+
   function handleEdit(task: Task) { setEditTask(task); setShowModal(true) }
 
   // Only show bounties that are due today or earlier (or have no due date).
@@ -304,6 +313,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onEdit={handleEdit}
+            onUpdate={handleUpdate}
           />
         )}
 
@@ -414,6 +424,7 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
       {showLogWork && (
         <LogWorkModal
           members={members}
+          currentUserId={currentUserId}
           onClose={() => setShowLogWork(false)}
           onSaved={() => fetchTasks()}
         />

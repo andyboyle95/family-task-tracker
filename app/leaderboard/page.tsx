@@ -7,11 +7,14 @@ import { Leaderboard, type MemberStats, type ChartDay, type CategoryTotal } from
 import type { Profile } from '@/types'
 
 const CATEGORY_DEFS = [
-  { label: 'DIY & Installations', emoji: '🔨', regex: /install|fix|hang|repair|treat|scarif|hook|bulb|bracket|u-bend|shelf|curtain|put up|wire|plumb|electric/ },
-  { label: 'Decorating',          emoji: '🎨', regex: /paint|refurb|redesign|decor|renovati|refit|stain|wallpaper/ },
-  { label: 'Decluttering',        emoji: '📦', regex: /sort|rationalise|rationalis|organis|tidy|declutter|donate|sell|return|clear|cupboard|cabinet|clothes|tupperware|frames?|ottoman/ },
-  { label: 'Shopping & Orders',   emoji: '🛒', regex: /order|buy|purchas|shop|groceri|grocery|tesco|asda|sainsbury|amazon|get the|collect|pick up/ },
-  { label: 'Admin & Planning',    emoji: '📋', regex: /book|confirm|decide|research|plan|oversee|receiv|deliver|coordinat|visit|choos|measure|quote/ },
+  { label: 'Little Monkey Care', emoji: '🐒', regex: /bottle|baby|napp(y|ie)|formula|wean|nursery|cot|buggy|pram|stroller|little.?monkey/ },
+  { label: 'Cooking & Meals',    emoji: '🍳', regex: /cook|dinner|lunch|breakfast|meal|food|recipe|supper|make.dinner|tea(?!.*bag)/ },
+  { label: 'Cleaning',           emoji: '🧹', regex: /clean|hoover|vacuum|sweep|mop|wipe|toilet|loo|dishwasher|washing.?up|scrub|tidy.?up|clear.?up|clear.?after/ },
+  { label: 'DIY & Installations',emoji: '🔨', regex: /install|fix|hang|repair|treat|electric|plumb|shelf|curtain|scarif|hook|bulb|u.?bend|put.?up|wire|solder/ },
+  { label: 'Decorating',         emoji: '🎨', regex: /paint|refurb|redesign|decor|renovat|refit|stain|wallpaper/ },
+  { label: 'Decluttering',       emoji: '📦', regex: /sort(?! out dinner)|rationalise|rationalis|organis|donate|sell|return|clear.?out|cupboard|cabinet|clothes|tupperware|ottoman/ },
+  { label: 'Shopping & Orders',  emoji: '🛒', regex: /order|buy|purchas|shop|groceri|tesco|asda|sainsbury|amazon|collect|pick.?up/ },
+  { label: 'Admin & Planning',   emoji: '📋', regex: /book|confirm|decide|research|plan|oversee|deliver|coordinat|visit|choos|measure|quote|sign|call/ },
 ]
 
 interface HistoryTask {

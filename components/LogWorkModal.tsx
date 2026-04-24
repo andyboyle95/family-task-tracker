@@ -13,19 +13,28 @@ interface ParsedItem {
   reasoning: string
 }
 
+const QUICK_TASKS = [
+  { label: 'Baby bottles',    emoji: '🍼', points: 5  },
+  { label: 'Dishwasher',      emoji: '🍽️', points: 3  },
+  { label: 'Make dinner',     emoji: '🍳', points: 10 },
+  { label: 'Clear up dinner', emoji: '🧹', points: 5  },
+  { label: 'Baby bath',       emoji: '🛁', points: 5  },
+] as const
+
 interface Props {
   members: Profile[]
+  currentUserId: string
   onClose: () => void
   onSaved: () => void
 }
 
-export function LogWorkModal({ members, onClose, onSaved }: Props) {
-  const [text, setText]         = useState('')
+export function LogWorkModal({ members, currentUserId, onClose, onSaved }: Props) {
+  const [text, setText]           = useState('')
   const [listening, setListening] = useState(false)
-  const [parsing, setParsing]   = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [items, setItems]       = useState<ParsedItem[] | null>(null)
-  const [error, setError]       = useState<string | null>(null)
+  const [parsing, setParsing]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [items, setItems]         = useState<ParsedItem[] | null>(null)
+  const [error, setError]         = useState<string | null>(null)
   const recognitionRef = useRef<unknown>(null)
 
   const canRecord =
@@ -39,17 +48,14 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
       setListening(false)
       return
     }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
     if (!SR) return
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition = new SR() as any
     recognition.continuous = false
     recognition.interimResults = true
     recognition.lang = 'en-GB'
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       const transcript = Array.from(e.results as unknown[])
@@ -60,17 +66,28 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
     }
     recognition.onend  = () => setListening(false)
     recognition.onerror = () => setListening(false)
-
     recognitionRef.current = recognition
     recognition.start()
     setListening(true)
+  }
+
+  function addQuickTask(qt: typeof QUICK_TASKS[number]) {
+    const person = members.find(m => m.id === currentUserId) ?? members[0]
+    const newItem: ParsedItem = {
+      description: qt.label,
+      person_id:   person.id,
+      person_name: person.name,
+      points:      qt.points,
+      completed_at: new Date().toISOString().split('T')[0] + 'T12:00:00.000Z',
+      reasoning:   'Quick add',
+    }
+    setItems(prev => [...(prev ?? []), newItem])
   }
 
   async function handleParse() {
     if (!text.trim()) return
     setParsing(true)
     setError(null)
-    setItems(null)
 
     const res = await fetch('/api/ai/log-work', {
       method: 'POST',
@@ -79,7 +96,9 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
     })
 
     if (res.ok) {
-      setItems(await res.json())
+      const parsed: ParsedItem[] = await res.json()
+      setItems(prev => [...(prev ?? []), ...parsed])
+      setText('')
     } else {
       const body = await res.json().catch(() => ({}))
       setError(body.error ?? 'Could not parse — try rephrasing')
@@ -119,10 +138,14 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
   }
 
   function removeItem(index: number) {
-    setItems(prev => prev?.filter((_, i) => i !== index) ?? null)
+    setItems(prev => {
+      const next = prev?.filter((_, i) => i !== index) ?? null
+      return next?.length === 0 ? null : next
+    })
   }
 
   const totalPoints = items?.reduce((s, i) => s + i.points, 0) ?? 0
+  const hasItems    = (items?.length ?? 0) > 0
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
@@ -132,7 +155,7 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
         <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Log what you did</h2>
-            <p className="text-xs text-gray-400 mt-0.5">AI awards points — 10 pts ≈ 30 min of work</p>
+            <p className="text-xs text-gray-400 mt-0.5">Award points for tasks completed</p>
           </div>
           <button onClick={onClose}
             className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
@@ -142,15 +165,40 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
 
         <div className="overflow-y-auto flex-1 px-5 pb-5 space-y-4">
 
-          {/* ── Input step ── */}
-          {!items && (
+          {/* ── Quick add buttons — always visible ── */}
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Quick add</p>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_TASKS.map(qt => (
+                <button
+                  key={qt.label}
+                  onClick={() => addQuickTask(qt)}
+                  className="flex items-center gap-1.5 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 active:scale-95 px-3 py-1.5 rounded-full text-xs font-medium text-gray-700 transition-all shadow-sm"
+                >
+                  <span>{qt.emoji}</span>
+                  <span>{qt.label}</span>
+                  <span className="text-amber-600 font-bold ml-0.5">+{qt.points}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-100" />
+            <span className="text-[11px] text-gray-300 font-medium">or describe in your own words</span>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
+          {/* ── Text input (hide once items confirmed via parse, but keep for mixing) ── */}
+          {!hasItems && (
             <div className="space-y-3">
               <div className="relative">
                 <textarea
                   value={text}
                   onChange={e => setText(e.target.value)}
                   placeholder={'e.g. "I did the bottles and bath, Andy cooked dinner and cleaned up after"'}
-                  rows={5}
+                  rows={4}
                   className="w-full border border-gray-200 rounded-2xl px-4 py-3 pr-12 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
                 {canRecord && (
@@ -172,7 +220,7 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                 <p className="text-xs text-red-500 text-center animate-pulse">🎙 Listening…</p>
               )}
 
-              {error && (
+              {error && !hasItems && (
                 <p className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>
               )}
 
@@ -189,27 +237,20 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
           )}
 
           {/* ── Preview / edit step ── */}
-          {items && (
+          {hasItems && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Review & edit ({items.length} task{items.length !== 1 ? 's' : ''})
+                  Review &amp; edit ({items!.length} item{items!.length !== 1 ? 's' : ''})
                 </p>
                 <button onClick={() => { setItems(null); setError(null) }}
                   className="text-xs text-indigo-500 hover:underline">
-                  ← Edit text
+                  ← Add more
                 </button>
               </div>
 
-              {items.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-8">
-                  No tasks found — go back and try rephrasing
-                </p>
-              )}
-
-              {items.map((item, i) => (
+              {items!.map((item, i) => (
                 <div key={i} className="bg-gray-50 border border-gray-100 rounded-2xl p-3 space-y-2.5">
-                  {/* Title */}
                   <div className="flex items-center gap-2">
                     <input
                       value={item.description}
@@ -222,7 +263,6 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                     </button>
                   </div>
 
-                  {/* Person + Points */}
                   <div className="flex items-center gap-2">
                     <select
                       value={item.person_id}
@@ -238,8 +278,7 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                       <span className="text-xs text-amber-500">+</span>
                       <input
                         type="number"
-                        min={1}
-                        max={500}
+                        min={1} max={500}
                         value={item.points}
                         onChange={e => updateField(i, 'points', Math.max(1, parseInt(e.target.value) || 1))}
                         className="w-10 text-xs font-bold text-amber-700 bg-transparent focus:outline-none text-center"
@@ -248,7 +287,6 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                     </div>
                   </div>
 
-                  {/* Date override */}
                   {item.completed_at && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-gray-400">Date:</span>
@@ -261,28 +299,33 @@ export function LogWorkModal({ members, onClose, onSaved }: Props) {
                     </div>
                   )}
 
-                  <p className="text-[10px] text-gray-400 italic leading-relaxed">{item.reasoning}</p>
+                  {item.reasoning !== 'Quick add' && (
+                    <p className="text-[10px] text-gray-400 italic leading-relaxed">{item.reasoning}</p>
+                  )}
                 </div>
               ))}
 
               {error && (
                 <p className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>
               )}
-
-              {items.length > 0 && (
-                <button
-                  onClick={handleConfirm}
-                  disabled={saving}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 text-white font-semibold py-3 rounded-2xl flex items-center justify-center gap-2 transition-all"
-                >
-                  {saving
-                    ? <><Loader2 size={16} className="animate-spin" /> Saving…</>
-                    : <><Check size={16} /> Confirm &amp; Award {totalPoints} pts</>}
-                </button>
-              )}
             </div>
           )}
         </div>
+
+        {/* Confirm footer — sticky at bottom when items exist */}
+        {hasItems && (
+          <div className="px-5 pb-5 pt-2 border-t border-gray-50 shrink-0">
+            <button
+              onClick={handleConfirm}
+              disabled={saving}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 text-white font-semibold py-3 rounded-2xl flex items-center justify-center gap-2 transition-all"
+            >
+              {saving
+                ? <><Loader2 size={16} className="animate-spin" /> Saving…</>
+                : <><Check size={16} /> Confirm &amp; Award {totalPoints} pts</>}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
