@@ -10,6 +10,7 @@ export interface MemberStats {
   points_today: number
   points_week: number
   task_breakdown: { title: string; count: number; points: number }[]
+  category_breakdown: { label: string; emoji: string; points: number }[]
   achievement: string
 }
 
@@ -24,6 +25,7 @@ export interface CategoryTotal {
   emoji: string
   points: number
   count: number
+  byUser: { userId: string; name: string; color: string; points: number }[]
 }
 
 interface Props {
@@ -35,7 +37,7 @@ interface Props {
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
-/* ── SVG cumulative points race chart ──────────────────────────────────── */
+/* ── Points race chart ──────────────────────────────────────────────────── */
 function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: ChartDay[] }) {
   const W = 320, H = 110
   const padL = 6, padR = 6, padT = 8, padB = 22
@@ -56,7 +58,6 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
 
   const cx = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW)
   const cy = (p: number) => padT + innerH - (p / maxPts) * innerH
-
   const toPath = (pts: number[]) =>
     pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${cx(i).toFixed(1)} ${cy(p).toFixed(1)}`).join(' ')
 
@@ -96,37 +97,44 @@ function PointsChart({ stats, chartData }: { stats: MemberStats[]; chartData: Ch
   )
 }
 
-/* ── Category breakdown section ────────────────────────────────────────── */
+/* ── Family category breakdown ──────────────────────────────────────────── */
 function CategoryBreakdown({ categories }: { categories: CategoryTotal[] }) {
-  const maxPts = Math.max(...categories.map(c => c.points), 1)
-  const visible = categories.filter(c => c.count > 0)
-
+  const visible  = categories.filter(c => c.count > 0)
+  const maxPts   = Math.max(...visible.map(c => c.points), 1)
   if (visible.length === 0) return null
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4">
-      <p className="text-sm font-semibold text-gray-900 mb-4">Top task categories</p>
-      <div className="space-y-3">
-        {visible.map((cat, i) => {
-          const pct = Math.round((cat.points / maxPts) * 100)
-          const rankColors = ['bg-amber-400', 'bg-gray-300', 'bg-amber-600', 'bg-indigo-400', 'bg-emerald-400']
-          return (
-            <div key={cat.label}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-base leading-none">{cat.emoji}</span>
-                <span className="text-sm font-medium text-gray-800 flex-1">{cat.label}</span>
-                <span className="text-xs text-gray-400">{cat.count} task{cat.count !== 1 ? 's' : ''}</span>
-                <span className="text-xs font-bold text-amber-600 w-16 text-right">{cat.points.toLocaleString()} pts</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${rankColors[i] ?? 'bg-indigo-400'}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+      <p className="text-sm font-semibold text-gray-900 mb-4">Points by category</p>
+      <div className="space-y-4">
+        {visible.map(cat => (
+          <div key={cat.label}>
+            {/* Category header */}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-base leading-none">{cat.emoji}</span>
+              <span className="text-sm font-semibold text-gray-800 flex-1">{cat.label}</span>
+              <span className="text-[11px] text-gray-400">{cat.count} task{cat.count !== 1 ? 's' : ''}</span>
+              <span className="text-xs font-bold text-amber-600">{cat.points.toLocaleString()} pts</span>
             </div>
-          )
-        })}
+
+            {/* Per-user breakdown */}
+            {cat.byUser.map(u => {
+              const pct = Math.round((u.points / maxPts) * 100)
+              return (
+                <div key={u.userId} className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] text-gray-500 w-14 shrink-0 truncate">{u.name}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: u.color }} />
+                  </div>
+                  <span className="text-[11px] font-semibold text-gray-600 w-14 text-right shrink-0">
+                    {u.points.toLocaleString()} pts
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -139,27 +147,37 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
   const me = stats.find(s => s.profile.id === currentUserId)
 
   const leftCol = (
-    <div className="space-y-5">
-      {/* ── Your stats banner ────────────────────────────────── */}
+    <div className="space-y-4">
+
+      {/* ── Your performance banner ──────────────────────── */}
       {me && (
         <div className="bg-indigo-600 rounded-2xl p-4 text-white">
-          <p className="text-xs font-semibold text-indigo-200 uppercase tracking-wide mb-3">Your performance</p>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {[
-              { label: 'Today',     value: me.points_today },
-              { label: 'This week', value: me.points_week },
-              { label: 'All time',  value: me.points_alltime },
-            ].map(({ label, value }) => (
-              <div key={label} className="bg-white/10 rounded-xl p-3">
-                <p className="text-2xl font-bold">{value.toLocaleString()}</p>
-                <p className="text-xs text-indigo-200 mt-0.5">{label}</p>
-              </div>
-            ))}
+          <p className="text-xs font-semibold text-indigo-300 uppercase tracking-wide mb-3">Your performance</p>
+
+          {/* Week + All time — hero numbers */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="bg-white/15 rounded-xl p-3">
+              <p className="text-3xl font-bold leading-none">{me.points_week.toLocaleString()}</p>
+              <p className="text-xs text-indigo-200 mt-1.5 font-medium">This week</p>
+            </div>
+            <div className="bg-white/10 rounded-xl p-3">
+              <p className="text-3xl font-bold leading-none">{me.points_alltime.toLocaleString()}</p>
+              <p className="text-xs text-indigo-200 mt-1.5 font-medium">All time</p>
+            </div>
+          </div>
+
+          {/* Today + achievement as footer row */}
+          <div className="flex items-center justify-between bg-white/10 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-indigo-300">Today</span>
+              <span className="text-sm font-bold">{me.points_today.toLocaleString()} pts</span>
+            </div>
+            <span className="text-xs text-indigo-200 truncate ml-3">{me.achievement}</span>
           </div>
         </div>
       )}
 
-      {/* ── Rankings ─────────────────────────────────────────── */}
+      {/* ── Rankings ─────────────────────────────────────── */}
       <div className="space-y-2">
         {sorted.map((s, i) => {
           const isMe       = s.profile.id === currentUserId
@@ -195,7 +213,17 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
                   <p className="text-xs text-gray-400 truncate mt-0.5">{s.achievement}</p>
                 </div>
 
-                <div className="text-right shrink-0">
+                {/* Week + Alltime in the row */}
+                <div className="hidden sm:flex flex-col items-end shrink-0 mr-1">
+                  <span className="text-[11px] text-gray-400">
+                    <span className="font-semibold text-gray-600">{s.points_week.toLocaleString()}</span> this week
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    <span className="font-bold text-amber-600">{s.points_alltime.toLocaleString()}</span> all time
+                  </span>
+                </div>
+                {/* Mobile: just alltime */}
+                <div className="sm:hidden text-right shrink-0">
                   <span className="text-lg font-bold text-amber-600">{s.points_alltime.toLocaleString()}</span>
                   <span className="text-xs text-gray-400 ml-0.5">pts</span>
                 </div>
@@ -207,36 +235,46 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
 
               {isExpanded && (
                 <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
+
+                  {/* Week + All time — prominent */}
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: 'Today',     value: s.points_today },
                       { label: 'This week', value: s.points_week },
+                      { label: 'All time',  value: s.points_alltime },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-gray-50 rounded-xl p-3 text-center">
-                        <p className="text-xl font-bold text-gray-900">{value.toLocaleString()}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{label}</p>
+                      <div key={label} className="rounded-xl p-3 text-center"
+                        style={{ backgroundColor: `${s.profile.avatar_color}12` }}>
+                        <p className="text-2xl font-bold text-gray-900">{value.toLocaleString()}</p>
+                        <p className="text-xs font-semibold mt-1"
+                          style={{ color: s.profile.avatar_color }}>{label}</p>
                       </div>
                     ))}
                   </div>
 
-                  {s.task_breakdown.length > 0 && (
+                  {/* Today */}
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+                    <span className="text-xs text-gray-400 font-medium">Today</span>
+                    <span className="text-sm font-bold text-gray-700">{s.points_today.toLocaleString()} pts</span>
+                  </div>
+
+                  {/* Category breakdown */}
+                  {s.category_breakdown.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Points by task</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Points by category</p>
                       <div className="space-y-2">
-                        {s.task_breakdown.map(t => {
+                        {s.category_breakdown.map(cat => {
                           const pct = s.points_alltime > 0
-                            ? Math.round((t.points / s.points_alltime) * 100)
-                            : 0
+                            ? Math.round((cat.points / s.points_alltime) * 100) : 0
                           return (
-                            <div key={t.title} className="flex items-center gap-2">
-                              <span className="text-xs text-gray-700 flex-1 truncate">{t.title}</span>
-                              <span className="text-xs text-gray-400 shrink-0">×{t.count}</span>
-                              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shrink-0">
+                            <div key={cat.label} className="flex items-center gap-2">
+                              <span className="text-sm leading-none shrink-0">{cat.emoji}</span>
+                              <span className="text-xs text-gray-700 flex-1 truncate">{cat.label}</span>
+                              <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden shrink-0">
                                 <div className="h-full rounded-full transition-all"
                                   style={{ width: `${pct}%`, backgroundColor: s.profile.avatar_color }} />
                               </div>
                               <span className="text-xs font-semibold text-amber-600 w-14 text-right shrink-0">
-                                {t.points.toLocaleString()} pts
+                                {cat.points.toLocaleString()} pts
                               </span>
                             </div>
                           )
@@ -245,7 +283,7 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
                     </div>
                   )}
 
-                  {s.task_breakdown.length === 0 && (
+                  {s.category_breakdown.length === 0 && (
                     <p className="text-xs text-gray-400 text-center py-2">No completed tasks yet</p>
                   )}
                 </div>
@@ -263,7 +301,7 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
 
   const rightCol = (
     <div className="space-y-5">
-      {/* ── Points race chart ──────────────────────────────── */}
+      {/* Points race chart */}
       {sorted.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-sm font-semibold text-gray-900 mb-1">Points race — last 14 days</p>
@@ -281,7 +319,7 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
         </div>
       )}
 
-      {/* ── Category breakdown ─────────────────────────────── */}
+      {/* Category breakdown with per-user bars */}
       <CategoryBreakdown categories={categories} />
     </div>
   )
@@ -294,7 +332,7 @@ export function Leaderboard({ stats, currentUserId, chartData, categories }: Pro
         {rightCol}
       </div>
 
-      {/* Desktop: 2-column grid */}
+      {/* Desktop: 2-column */}
       <div className="hidden md:grid md:grid-cols-[1fr_380px] md:gap-6 md:items-start">
         {leftCol}
         {rightCol}

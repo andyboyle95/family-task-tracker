@@ -25,11 +25,24 @@ export default async function HomePage() {
     db.from('profiles').select('*').eq('id', session.userId).single(),
   ])
 
+  // Compute current user's points from task history so the header matches the leaderboard
+  const allTasks = (tasks ?? []) as Task[]
+  const computedPoints = allTasks
+    .filter(t => t.status === 'completed')
+    .reduce((sum, t) => {
+      const isForMe = t.is_shared
+        ? (t.completed_by === session.userId || t.assigned_to === session.userId)
+        : (t.completed_by ?? t.assigned_to) === session.userId
+      if (!isForMe) return sum
+      return sum + (t.is_shared ? Math.ceil(t.point_bounty / 2) : t.point_bounty)
+    }, 0)
+  const profileForHeader = profile ? { ...(profile as Profile), points: computedPoints } : null
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header
         familyName={family?.name ?? 'Family Tasks'}
-        currentUser={profile as Profile}
+        currentUser={profileForHeader}
         right={<PushManager />}
       />
       <main className="max-w-7xl mx-auto pt-4">

@@ -124,9 +124,14 @@ function DesktopColumns({
   onUndo: (id: string) => void
   onShare: (id: string) => void
 }) {
+  // Shared tasks appear in BOTH the completer's and the assignee's column
   const columns = profiles.map(p => ({
     profile: p,
-    tasks: tasks.filter(t => (t.completed_by ?? t.assigned_to) === p.id),
+    tasks: tasks.filter(t =>
+      t.is_shared
+        ? t.completed_by === p.id || t.assigned_to === p.id
+        : (t.completed_by ?? t.assigned_to) === p.id
+    ),
   }))
 
   const unknownTasks = tasks.filter(t => {

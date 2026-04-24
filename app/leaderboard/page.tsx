@@ -31,6 +31,13 @@ function effectivePts(t: HistoryTask) {
   return t.is_shared ? Math.ceil(t.point_bounty / 2) : t.point_bounty
 }
 
+// A task belongs to a user if they completed it (non-shared),
+// or if it's shared and they were either the completer or assignee.
+function belongsTo(t: HistoryTask, userId: string): boolean {
+  if (t.is_shared) return t.completed_by === userId || t.assigned_to === userId
+  return (t.completed_by ?? t.assigned_to) === userId
+}
+
 function getAchievement(breakdown: { title: string; count: number }[], totalPoints: number): string {
   if (totalPoints === 0) return '🛋️ Professional Relaxer'
   const top = breakdown[0]
@@ -46,7 +53,8 @@ function getAchievement(breakdown: { title: string; count: number }[], totalPoin
   if (/garden|mow|lawn|weed|plant/.test(t)) return '🌿 The Lawnfather'
   if (/iron/.test(t)) return '👔 Wrinkle Warrior'
   if (/bathroom|toilet|shower|loo/.test(t)) return '🚿 Throne Guardian'
-  if (/bottle/.test(t)) return '🍾 Bottle Brigadier'
+  if (/bottle/.test(t)) return '🍼 Bottle Champion'
+  if (/baby|napp/.test(t)) return '🐒 Little Monkey Hero'
   if (/dog|pet|cat|walk/.test(t)) return '🐕 Dog Whisperer'
   if (/car|tyre|oil/.test(t)) return '🚗 Speed Racer'
   if (top.count >= 20) return `🏆 ${top.title} Superfan`
@@ -60,7 +68,8 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
   const weekStart  = new Date(now); weekStart.setDate(now.getDate() - 7); weekStart.setHours(0, 0, 0, 0)
 
   return profiles.map(p => {
-    const mine = history.filter(t => (t.completed_by ?? t.assigned_to) === p.id)
+    // Shared tasks count for BOTH the completer and the assignee
+    const mine = history.filter(t => belongsTo(t, p.id))
     const points_alltime = mine.reduce((s, t) => s + effectivePts(t), 0)
 
     const byTitle = new Map<string, { count: number; points: number }>()
@@ -74,6 +83,17 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
       .sort((a, b) => b.points - a.points)
       .slice(0, 6)
 
+    const category_breakdown = CATEGORY_DEFS
+      .map(def => ({
+        label:  def.label,
+        emoji:  def.emoji,
+        points: mine
+          .filter(t => def.regex.test(t.title.toLowerCase()))
+          .reduce((s, t) => s + effectivePts(t), 0),
+      }))
+      .filter(c => c.points > 0)
+      .sort((a, b) => b.points - a.points)
+
     return {
       profile: p,
       points_alltime,
@@ -84,20 +104,30 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
         .filter(t => t.completed_at && new Date(t.completed_at) >= weekStart)
         .reduce((s, t) => s + effectivePts(t), 0),
       task_breakdown,
+      category_breakdown,
       achievement: getAchievement(task_breakdown, points_alltime),
     }
   })
 }
 
-function buildCategories(history: HistoryTask[]): CategoryTotal[] {
+function buildCategories(profiles: Profile[], history: HistoryTask[]): CategoryTotal[] {
   return CATEGORY_DEFS.map(def => {
-    const matching = history.filter(t => def.regex.test(t.title.toLowerCase()))
-    return {
-      label: def.label,
-      emoji: def.emoji,
-      points: matching.reduce((s, t) => s + effectivePts(t), 0),
-      count: matching.length,
-    }
+    const matching  = history.filter(t => def.regex.test(t.title.toLowerCase()))
+    const totalPts  = matching.reduce((s, t) => s + effectivePts(t), 0)
+
+    const byUser = profiles
+      .map(p => ({
+        userId: p.id,
+        name:   p.name,
+        color:  p.avatar_color,
+        points: matching
+          .filter(t => belongsTo(t, p.id))
+          .reduce((s, t) => s + effectivePts(t), 0),
+      }))
+      .filter(u => u.points > 0)
+      .sort((a, b) => b.points - a.points)
+
+    return { label: def.label, emoji: def.emoji, points: totalPts, count: matching.length, byUser }
   }).sort((a, b) => b.points - a.points)
 }
 
@@ -113,7 +143,7 @@ function buildChartData(profiles: Profile[], history: HistoryTask[]): ChartDay[]
     const byUser: Record<string, number> = {}
     for (const p of profiles) {
       byUser[p.id] = history
-        .filter(t => (t.completed_by ?? t.assigned_to) === p.id && t.completed_at?.startsWith(date))
+        .filter(t => belongsTo(t, p.id) && t.completed_at?.startsWith(date))
         .reduce((s, t) => s + effectivePts(t), 0)
     }
     return {
@@ -134,7 +164,6 @@ export default async function LeaderboardPage() {
     db.from('profiles').select('*').eq('family_id', session.familyId),
     db.from('families').select('name').eq('id', session.familyId).single(),
     db.from('profiles').select('*').eq('id', session.userId).single(),
-    // No date filter — fetch all history so all-time totals are accurate
     db.from('tasks')
       .select('id, title, point_bounty, is_shared, completed_by, assigned_to, completed_at')
       .eq('family_id', session.familyId)
@@ -146,11 +175,26 @@ export default async function LeaderboardPage() {
   const hist       = (history ?? []) as HistoryTask[]
   const stats      = buildStats(profiles, hist)
   const chart      = buildChartData(profiles, hist)
-  const categories = buildCategories(hist)
+  const categories = buildCategories(profiles, hist)
+
+  // Sync profiles.points to computed all-time totals (heals any historical drift)
+  const outOfSync = stats.filter(s => s.profile.points !== s.points_alltime)
+  if (outOfSync.length > 0) {
+    await Promise.all(
+      outOfSync.map(s =>
+        db.from('profiles').update({ points: s.points_alltime }).eq('id', s.profile.id)
+      )
+    )
+  }
+
+  // Use the synced value for the header
+  const profileForHeader = profile
+    ? { ...(profile as Profile), points: stats.find(s => s.profile.id === session.userId)?.points_alltime ?? (profile as Profile).points }
+    : null
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profile as Profile} />
+      <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profileForHeader} />
       <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 pb-32 md:pb-8">
         <Leaderboard stats={stats} currentUserId={session.userId} chartData={chart} categories={categories} />
       </main>
