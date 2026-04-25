@@ -21,14 +21,13 @@ interface Props {
   initialTasks: CompletedTask[]
   profiles: Profile[]
   familyId: string
-  initialWeekStart: string // YYYY-MM-DD (always a Monday, UTC)
+  initialWeekStart: string // YYYY-MM-DD (Monday, UTC)
 }
 
 function effectivePts(t: CompletedTask) {
   return t.is_shared ? Math.ceil(t.point_bounty / 2) : t.point_bounty
 }
 
-// All date arithmetic in UTC to match completed_at UTC timestamps in DB
 function utcDateStr(d: Date): string {
   const y  = d.getUTCFullYear()
   const m  = String(d.getUTCMonth() + 1).padStart(2, '0')
@@ -37,8 +36,7 @@ function utcDateStr(d: Date): string {
 }
 
 function getWeekStart(date: Date): Date {
-  const dow  = date.getUTCDay()
-  const diff = (dow + 6) % 7 // Mon = 0
+  const diff = (date.getUTCDay() + 6) % 7
   const d    = new Date(date)
   d.setUTCDate(d.getUTCDate() - diff)
   d.setUTCHours(0, 0, 0, 0)
@@ -56,12 +54,12 @@ function getWeekDays(monday: Date): Date[] {
 function weekLabel(monday: Date): string {
   const sunday = new Date(monday)
   sunday.setUTCDate(sunday.getUTCDate() + 6)
-  const startDay = monday.getUTCDate()
-  const endDay   = sunday.getUTCDate()
   const startMon = monday.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })
   const endMon   = sunday.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })
-  if (startMon === endMon) return `${startDay}–${endDay} ${startMon}`
-  return `${startDay} ${startMon} – ${endDay} ${endMon}`
+  if (startMon === endMon) {
+    return `${monday.getUTCDate()}–${sunday.getUTCDate()} ${startMon}`
+  }
+  return `${monday.getUTCDate()} ${startMon} – ${sunday.getUTCDate()} ${endMon}`
 }
 
 function taskBelongsToUser(t: CompletedTask, userId: string): boolean {
@@ -69,30 +67,42 @@ function taskBelongsToUser(t: CompletedTask, userId: string): boolean {
   return (t.completed_by ?? t.assigned_to) === userId
 }
 
-/* ── Task chip (desktop swimlane cell) ───────────────────────────────── */
+// Hex color → rgba with opacity
+function colorWithOpacity(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${opacity})`
+}
+
+/* ── Task chip ────────────────────────────────────────────────────────── */
 function TaskChip({
   task,
+  color,
   acting,
   onUndo,
   onShare,
 }: {
   task: CompletedTask
+  color: string
   acting: 'undo' | 'share' | undefined
   onUndo: () => void
   onShare: () => void
 }) {
   const pts = effectivePts(task)
   return (
-    <div className={`group flex items-center gap-1 rounded-lg px-2 py-1 leading-tight
-      ${task.is_bounty ? 'bg-amber-50 border border-amber-100' : 'bg-emerald-50 border border-emerald-100'}`}>
+    <div
+      className="group flex items-center gap-1 rounded-lg px-2 py-1 leading-tight"
+      style={{
+        backgroundColor: colorWithOpacity(color, 0.1),
+        border: `1px solid ${colorWithOpacity(color, 0.25)}`,
+      }}
+    >
+      {task.is_bounty
+        ? <Zap size={8} className="shrink-0" style={{ color, fill: color }} />
+        : <CheckCircle2 size={8} className="shrink-0" style={{ color }} />}
       <span className="flex-1 truncate text-[11px] font-medium text-gray-700 min-w-0">{task.title}</span>
-      <span className={`shrink-0 flex items-center gap-0.5 text-[10px] font-bold
-        ${task.is_bounty ? 'text-amber-600' : 'text-emerald-600'}`}>
-        {task.is_bounty
-          ? <Zap size={8} className="fill-amber-500 shrink-0" />
-          : <CheckCircle2 size={8} className="shrink-0" />}
-        +{pts}
-      </span>
+      <span className="shrink-0 text-[10px] font-bold" style={{ color }}>+{pts}</span>
       <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
         {!task.is_shared && (
           <button onClick={onShare} disabled={!!acting}
@@ -109,7 +119,7 @@ function TaskChip({
   )
 }
 
-/* ── Desktop swimlane ─────────────────────────────────────────────────── */
+/* ── Desktop swimlane — CSS grid, no scrollbar ────────────────────────── */
 function DesktopSwimlane({
   days,
   profiles,
@@ -125,7 +135,10 @@ function DesktopSwimlane({
   onUndo: (id: string) => void
   onShare: (id: string) => void
 }) {
-  const today = utcDateStr(new Date())
+  const today  = utcDateStr(new Date())
+  const nCols  = profiles.length > 0 ? 7 : 7
+  // person label | 7 day cols | week total
+  const gridCols = `minmax(80px,auto) repeat(${nCols},1fr) minmax(48px,auto)`
 
   const byDate = new Map<string, CompletedTask[]>()
   for (const t of tasks) {
@@ -136,95 +149,89 @@ function DesktopSwimlane({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-        <thead>
-          <tr>
-            <th className="w-28 pb-3" />
+    <div className="grid gap-x-2" style={{ gridTemplateColumns: gridCols }}>
+      {/* ── Header row ── */}
+      <div /> {/* person col */}
+      {days.map(d => {
+        const ds      = utcDateStr(d)
+        const isToday = ds === today
+        return (
+          <div key={ds} className="pb-3 text-center">
+            <p className={`text-[10px] font-semibold uppercase tracking-wide
+              ${isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
+              {d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' })}
+            </p>
+            <p className={`text-lg font-bold leading-tight
+              ${isToday ? 'text-indigo-600' : 'text-gray-800'}`}>
+              {d.getUTCDate()}
+            </p>
+          </div>
+        )
+      })}
+      <div className="pb-3 text-right pr-1">
+        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Week</span>
+      </div>
+
+      {/* ── Person rows ── */}
+      {profiles.map((profile, pi) => {
+        const isLast    = pi === profiles.length - 1
+        const weekTotal = tasks
+          .filter(t => taskBelongsToUser(t, profile.id))
+          .reduce((s, t) => s + effectivePts(t), 0)
+
+        return (
+          <>
+            {/* Person label */}
+            <div key={`person-${profile.id}`}
+              className={`flex items-start gap-2 pr-3 pt-1 ${isLast ? '' : 'pb-5'}`}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+                style={{ backgroundColor: profile.avatar_color }}>
+                {profile.name[0].toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-gray-700 truncate pt-1">{profile.name}</span>
+            </div>
+
+            {/* Day cells */}
             {days.map(d => {
-              const ds      = utcDateStr(d)
-              const isToday = ds === today
+              const ds       = utcDateStr(d)
+              const isToday  = ds === today
+              const dayTasks = (byDate.get(ds) ?? []).filter(t => taskBelongsToUser(t, profile.id))
               return (
-                <th key={ds} className="px-1.5 pb-3 text-center font-normal">
-                  <div className="flex flex-col items-center">
-                    <span className={`text-[10px] font-semibold uppercase tracking-wide
-                      ${isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
-                      {d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' })}
-                    </span>
-                    <span className={`text-lg font-bold leading-tight
-                      ${isToday ? 'text-indigo-600' : 'text-gray-800'}`}>
-                      {d.getUTCDate()}
-                    </span>
+                <div key={`${profile.id}-${ds}`}
+                  className={`px-1 ${isLast ? '' : 'pb-5'}`}>
+                  <div className={`min-h-[32px] rounded-xl p-1.5 space-y-1
+                    ${isToday ? 'bg-indigo-50/60' : ''}`}>
+                    {dayTasks.map(task => (
+                      <TaskChip
+                        key={task.id}
+                        task={task}
+                        color={profile.avatar_color}
+                        acting={acting[task.id]}
+                        onUndo={() => onUndo(task.id)}
+                        onShare={() => onShare(task.id)}
+                      />
+                    ))}
                   </div>
-                </th>
+                </div>
               )
             })}
-            <th className="w-16 pb-3 text-right pr-1">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Week</span>
-            </th>
-          </tr>
-        </thead>
 
-        <tbody>
-          {profiles.map((profile, pi) => {
-            const weekTotal = tasks
-              .filter(t => taskBelongsToUser(t, profile.id))
-              .reduce((s, t) => s + effectivePts(t), 0)
-            const isLast = pi === profiles.length - 1
-
-            return (
-              <tr key={profile.id}>
-                {/* Person */}
-                <td className={`pr-3 align-top ${isLast ? '' : 'pb-4'}`}>
-                  <div className="flex items-center gap-2 pt-1">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-                      style={{ backgroundColor: profile.avatar_color }}>
-                      {profile.name[0].toUpperCase()}
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700 truncate">{profile.name}</span>
-                  </div>
-                </td>
-
-                {/* Day cells */}
-                {days.map(d => {
-                  const ds      = utcDateStr(d)
-                  const isToday = ds === today
-                  const dayTasks = (byDate.get(ds) ?? []).filter(t => taskBelongsToUser(t, profile.id))
-                  return (
-                    <td key={ds} className={`px-1 align-top ${isLast ? '' : 'pb-4'}`}>
-                      <div className={`min-h-[36px] rounded-xl p-1.5 space-y-1
-                        ${isToday ? 'bg-indigo-50/70' : ''}`}>
-                        {dayTasks.map(task => (
-                          <TaskChip
-                            key={task.id}
-                            task={task}
-                            acting={acting[task.id]}
-                            onUndo={() => onUndo(task.id)}
-                            onShare={() => onShare(task.id)}
-                          />
-                        ))}
-                      </div>
-                    </td>
-                  )
-                })}
-
-                {/* Week total */}
-                <td className={`pl-2 align-top text-right ${isLast ? '' : 'pb-4'}`}>
-                  {weekTotal > 0
-                    ? <><span className="text-sm font-bold text-amber-600">{weekTotal}</span>
-                        <span className="text-[10px] text-gray-400 ml-0.5">pts</span></>
-                    : <span className="text-sm text-gray-200">—</span>}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            {/* Week total */}
+            <div key={`total-${profile.id}`}
+              className={`pl-2 pt-1 text-right ${isLast ? '' : 'pb-5'}`}>
+              {weekTotal > 0
+                ? <><span className="text-sm font-bold" style={{ color: profile.avatar_color }}>{weekTotal}</span>
+                    <span className="text-[10px] text-gray-400 ml-0.5">pts</span></>
+                : <span className="text-sm text-gray-200">—</span>}
+            </div>
+          </>
+        )
+      })}
     </div>
   )
 }
 
-/* ── Mobile: day-picker strip + person-grouped tasks ─────────────────── */
+/* ── Mobile: day-picker strip + person-grouped list ──────────────────── */
 function MobileDayView({
   days,
   profiles,
@@ -261,8 +268,8 @@ function MobileDayView({
 
   return (
     <div>
-      {/* Day picker */}
-      <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1">
+      {/* Day picker — always fits 7 days, no scroll */}
+      <div className="grid grid-cols-7 gap-1 mb-5">
         {days.map(d => {
           const ds      = utcDateStr(d)
           const isToday = ds === today
@@ -270,26 +277,24 @@ function MobileDayView({
           const hasWork = (byDate.get(ds) ?? []).length > 0
           return (
             <button key={ds} onClick={() => onSelectDay(ds)}
-              className={`flex flex-col items-center px-3 py-2 rounded-2xl shrink-0 transition-all
+              className={`flex flex-col items-center py-2 rounded-2xl transition-all
                 ${isSel
                   ? 'bg-indigo-600 text-white shadow-md'
                   : isToday
                   ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
                   : 'bg-white border border-gray-100 text-gray-600'}`}>
-              <span className="text-[10px] font-semibold uppercase tracking-wide">
+              <span className="text-[9px] font-semibold uppercase tracking-wide leading-none">
                 {d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' })}
               </span>
-              <span className="text-xl font-bold leading-tight">{d.getUTCDate()}</span>
-              <div className={`w-1.5 h-1.5 rounded-full mt-0.5 transition-colors
-                ${hasWork
-                  ? isSel ? 'bg-white/70' : 'bg-amber-400'
-                  : 'bg-transparent'}`} />
+              <span className="text-base font-bold leading-tight mt-0.5">{d.getUTCDate()}</span>
+              <div className={`w-1.5 h-1.5 rounded-full mt-1 transition-colors
+                ${hasWork ? (isSel ? 'bg-white/70' : 'bg-amber-400') : 'bg-transparent'}`} />
             </button>
           )
         })}
       </div>
 
-      {/* Tasks */}
+      {/* Tasks grouped by person */}
       <div className="space-y-4">
         {byPerson.length === 0 && (
           <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
@@ -307,21 +312,30 @@ function MobileDayView({
                   {profile.name[0].toUpperCase()}
                 </div>
                 <span className="text-sm font-semibold text-gray-800">{profile.name}</span>
-                <span className="ml-auto text-xs font-bold text-amber-600">{total} pts</span>
+                <span className="ml-auto text-xs font-bold" style={{ color: profile.avatar_color }}>
+                  {total} pts
+                </span>
               </div>
               <div className="space-y-1.5 pl-9">
                 {personTasks.map(t => (
                   <div key={t.id}
-                    className="flex items-center gap-2 bg-white rounded-xl border border-gray-100 px-3 py-2">
+                    className="flex items-center gap-2 rounded-xl px-3 py-2"
+                    style={{
+                      backgroundColor: colorWithOpacity(profile.avatar_color, 0.08),
+                      border: `1px solid ${colorWithOpacity(profile.avatar_color, 0.2)}`,
+                    }}>
                     <p className="flex-1 text-xs text-gray-800 font-medium leading-snug">{t.title}</p>
                     {t.is_shared && (
                       <span className="text-[10px] text-purple-400 font-medium shrink-0">shared</span>
                     )}
-                    <div className={`shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold
-                      ${t.is_bounty ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <div className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{
+                        backgroundColor: colorWithOpacity(profile.avatar_color, 0.12),
+                        color: profile.avatar_color,
+                      }}>
                       {t.is_bounty
-                        ? <Zap size={8} className="fill-amber-500" />
-                        : <CheckCircle2 size={8} />}
+                        ? <Zap size={8} style={{ fill: profile.avatar_color, color: profile.avatar_color }} />
+                        : <CheckCircle2 size={8} style={{ color: profile.avatar_color }} />}
                       +{effectivePts(t)}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
@@ -354,7 +368,6 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
   const [loading,     setLoading]     = useState(false)
   const [acting,      setActing]      = useState<Record<string, 'undo' | 'share'>>({})
   const [selectedDay, setSelectedDay] = useState<string>(() => {
-    // Default to today if it falls in this week, else last day of week
     const today   = utcDateStr(new Date())
     const weekEnd = new Date(`${initialWeekStart}T00:00:00Z`)
     weekEnd.setUTCDate(weekEnd.getUTCDate() + 6)
@@ -366,11 +379,10 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
 
   const fetchWeek = useCallback(async (mon: Date) => {
     setLoading(true)
-    const from = utcDateStr(mon)
+    const from   = utcDateStr(mon)
     const toDate = new Date(mon)
     toDate.setUTCDate(toDate.getUTCDate() + 7)
-    const to = utcDateStr(toDate)
-    const res = await fetch(`/api/activity?from=${from}&to=${to}`)
+    const res = await fetch(`/api/activity?from=${from}&to=${utcDateStr(toDate)}`)
     if (res.ok) setTasks(await res.json())
     setLoading(false)
   }, [])
@@ -394,8 +406,8 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
   }
 
   function nextWeek() {
-    const currentWeekMonday = getWeekStart(new Date())
-    if (utcDateStr(monday) >= utcDateStr(currentWeekMonday)) return
+    const currentMonday = getWeekStart(new Date())
+    if (utcDateStr(monday) >= utcDateStr(currentMonday)) return
     const next = new Date(monday)
     next.setUTCDate(next.getUTCDate() + 7)
     setMonday(next)
@@ -417,10 +429,8 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
     setActing(prev => { const n = { ...prev }; delete n[taskId]; return n })
   }
 
-  const currentWeekMonday  = getWeekStart(new Date())
-  const isCurrentWeek      = utcDateStr(monday) === utcDateStr(currentWeekMonday)
+  const isCurrentWeek = utcDateStr(monday) === utcDateStr(getWeekStart(new Date()))
 
-  // Per-person week totals for the summary strip
   const weekTotals = profiles
     .map(p => ({
       profile: p,
@@ -431,7 +441,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
 
   return (
     <div>
-      {/* Page header + week navigation */}
+      {/* Header + navigation */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">Activity</h1>
         <div className="flex items-center gap-2">
@@ -450,7 +460,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
         </div>
       </div>
 
-      {/* Per-person week summary */}
+      {/* Week summary strip */}
       {weekTotals.length > 0 && (
         <div className="flex gap-2 flex-wrap mb-4">
           {weekTotals.map(({ profile, pts }) => (
@@ -461,7 +471,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
                 {profile.name[0].toUpperCase()}
               </div>
               <span className="text-xs font-medium text-gray-600">{profile.name}</span>
-              <span className="text-xs font-bold text-amber-600">{pts} pts this week</span>
+              <span className="text-xs font-bold" style={{ color: profile.avatar_color }}>{pts} pts this week</span>
             </div>
           ))}
         </div>
