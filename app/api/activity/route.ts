@@ -7,7 +7,9 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const month = searchParams.get('month') // YYYY-MM
+  const from  = searchParams.get('from')  // YYYY-MM-DD
+  const to    = searchParams.get('to')    // YYYY-MM-DD exclusive
+  const month = searchParams.get('month') // YYYY-MM (legacy)
 
   const db = createAdminClient()
   let query = db
@@ -17,7 +19,9 @@ export async function GET(req: Request) {
     .eq('status', 'completed')
     .order('completed_at', { ascending: false })
 
-  if (month) {
+  if (from && to) {
+    query = query.gte('completed_at', `${from}T00:00:00`).lt('completed_at', `${to}T00:00:00`)
+  } else if (month) {
     const [y, m] = month.split('-').map(Number)
     const start = new Date(y, m - 1, 1).toISOString()
     const end   = new Date(y, m, 1).toISOString()

@@ -6,28 +6,37 @@ import { BottomNav } from '@/components/BottomNav'
 import { ActivityClient } from './ActivityClient'
 import type { Profile } from '@/types'
 
+function utcDateStr(d: Date): string {
+  const y  = d.getUTCFullYear()
+  const m  = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
 export default async function ActivityPage() {
   const session = await getSession()
   if (!session) redirect('/join')
 
+  // Current week Mon→Sun in UTC (consistent with completed_at UTC timestamps)
+  const now    = new Date()
+  const dow    = now.getUTCDay()
+  const monday = new Date(now)
+  monday.setUTCDate(monday.getUTCDate() - (dow + 6) % 7)
+  monday.setUTCHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(sunday.getUTCDate() + 7)
+
+  const weekStart = utcDateStr(monday)
+  const weekEnd   = utcDateStr(sunday)
+
   const db = createAdminClient()
-
-  const now   = new Date()
-  const year  = now.getFullYear()
-  const month = now.getMonth() + 1
-  const mm    = String(month).padStart(2, '0')
-  const initialMonth = `${year}-${mm}`
-
-  const monthStart = new Date(year, month - 1, 1).toISOString()
-  const monthEnd   = new Date(year, month, 1).toISOString()
-
   const [{ data: tasks }, { data: profiles }, { data: family }, { data: profile }] = await Promise.all([
     db.from('tasks')
       .select('id, title, point_bounty, is_bounty, is_shared, completed_at, completed_by, assigned_to, family_id')
       .eq('family_id', session.familyId)
       .eq('status', 'completed')
-      .gte('completed_at', monthStart)
-      .lt('completed_at', monthEnd)
+      .gte('completed_at', `${weekStart}T00:00:00`)
+      .lt('completed_at',  `${weekEnd}T00:00:00`)
       .order('completed_at', { ascending: false }),
     db.from('profiles').select('*').eq('family_id', session.familyId),
     db.from('families').select('name').eq('id', session.familyId).single(),
@@ -42,7 +51,7 @@ export default async function ActivityPage() {
           initialTasks={tasks ?? []}
           profiles={(profiles ?? []) as Profile[]}
           familyId={session.familyId}
-          initialMonth={initialMonth}
+          initialWeekStart={weekStart}
         />
       </main>
       <BottomNav />
