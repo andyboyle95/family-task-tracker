@@ -82,14 +82,33 @@ function TaskChip({
   acting,
   onUndo,
   onShare,
+  onEditPts,
 }: {
   task: CompletedTask
   color: string
   acting: 'undo' | 'share' | undefined
   onUndo: () => void
   onShare: () => void
+  onEditPts: (newBounty: number) => Promise<void>
 }) {
+  const [editingPts, setEditingPts] = useState(false)
+  const [draftPts,   setDraftPts]   = useState('')
   const pts = effectivePts(task)
+
+  function startEditPts(e: React.MouseEvent) {
+    e.stopPropagation()
+    setDraftPts(String(pts))
+    setEditingPts(true)
+  }
+
+  async function commitPts() {
+    setEditingPts(false)
+    const newEffective = parseInt(draftPts, 10)
+    if (isNaN(newEffective) || newEffective < 0 || newEffective === pts) return
+    // Convert displayed effective value back to point_bounty
+    await onEditPts(task.is_shared ? newEffective * 2 : newEffective)
+  }
+
   return (
     <div
       className="group flex items-center gap-1 rounded-lg px-2 py-1 leading-tight"
@@ -102,7 +121,31 @@ function TaskChip({
         ? <Zap size={8} className="shrink-0" style={{ color, fill: color }} />
         : <CheckCircle2 size={8} className="shrink-0" style={{ color }} />}
       <span className="flex-1 truncate text-[11px] font-medium text-gray-700 min-w-0">{task.title}</span>
-      <span className="shrink-0 text-[10px] font-bold" style={{ color }}>+{pts}</span>
+
+      {editingPts ? (
+        <input
+          type="number"
+          value={draftPts}
+          min={0}
+          autoFocus
+          onChange={e => setDraftPts(e.target.value)}
+          onBlur={commitPts}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commitPts() }
+            if (e.key === 'Escape') setEditingPts(false)
+          }}
+          className="w-8 text-[10px] font-bold text-right bg-transparent border-b outline-none"
+          style={{ color, borderColor: colorWithOpacity(color, 0.5) }}
+        />
+      ) : (
+        <button onClick={startEditPts}
+          className="shrink-0 text-[10px] font-bold hover:underline cursor-pointer"
+          style={{ color }}
+          title="Click to edit points">
+          +{pts}
+        </button>
+      )}
+
       <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
         {!task.is_shared && (
           <button onClick={onShare} disabled={!!acting}
@@ -127,6 +170,7 @@ function DesktopSwimlane({
   acting,
   onUndo,
   onShare,
+  onEditPts,
 }: {
   days: Date[]
   profiles: Profile[]
@@ -134,6 +178,7 @@ function DesktopSwimlane({
   acting: Record<string, 'undo' | 'share'>
   onUndo: (id: string) => void
   onShare: (id: string) => void
+  onEditPts: (id: string, newBounty: number) => Promise<void>
 }) {
   const today  = utcDateStr(new Date())
   const nCols  = profiles.length > 0 ? 7 : 7
@@ -209,6 +254,7 @@ function DesktopSwimlane({
                         acting={acting[task.id]}
                         onUndo={() => onUndo(task.id)}
                         onShare={() => onShare(task.id)}
+                        onEditPts={newBounty => onEditPts(task.id, newBounty)}
                       />
                     ))}
                   </div>
@@ -231,6 +277,96 @@ function DesktopSwimlane({
   )
 }
 
+/* ── Mobile task card (extracted so it can hold its own editing state) ── */
+function MobileTaskCard({
+  task,
+  color,
+  acting,
+  onUndo,
+  onShare,
+  onEditPts,
+}: {
+  task: CompletedTask
+  color: string
+  acting: 'undo' | 'share' | undefined
+  onUndo: () => void
+  onShare: () => void
+  onEditPts: (newBounty: number) => Promise<void>
+}) {
+  const [editingPts, setEditingPts] = useState(false)
+  const [draftPts,   setDraftPts]   = useState('')
+  const pts = effectivePts(task)
+
+  function startEditPts() {
+    setDraftPts(String(pts))
+    setEditingPts(true)
+  }
+
+  async function commitPts() {
+    setEditingPts(false)
+    const newEffective = parseInt(draftPts, 10)
+    if (isNaN(newEffective) || newEffective < 0 || newEffective === pts) return
+    await onEditPts(task.is_shared ? newEffective * 2 : newEffective)
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+      style={{
+        backgroundColor: colorWithOpacity(color, 0.08),
+        border: `1px solid ${colorWithOpacity(color, 0.2)}`,
+      }}>
+      <p className="flex-1 text-xs text-gray-800 font-medium leading-snug">{task.title}</p>
+      {task.is_shared && (
+        <span className="text-[10px] text-purple-400 font-medium shrink-0">shared</span>
+      )}
+
+      {/* Editable points badge */}
+      <div className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+        style={{
+          backgroundColor: colorWithOpacity(color, 0.12),
+          color,
+        }}>
+        {task.is_bounty
+          ? <Zap size={8} style={{ fill: color, color }} />
+          : <CheckCircle2 size={8} style={{ color }} />}
+        {editingPts ? (
+          <input
+            type="number"
+            value={draftPts}
+            min={0}
+            autoFocus
+            onChange={e => setDraftPts(e.target.value)}
+            onBlur={commitPts}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitPts() }
+              if (e.key === 'Escape') setEditingPts(false)
+            }}
+            className="w-8 bg-transparent text-[10px] font-bold outline-none text-right border-b"
+            style={{ color, borderColor: colorWithOpacity(color, 0.5) }}
+          />
+        ) : (
+          <button onClick={startEditPts} className="hover:underline" title="Tap to edit points">
+            +{pts}
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-0.5 shrink-0">
+        {!task.is_shared && (
+          <button onClick={onShare} disabled={!!acting}
+            className="p-1 rounded text-gray-300 hover:text-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-40">
+            <Users size={11} />
+          </button>
+        )}
+        <button onClick={onUndo} disabled={!!acting}
+          className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40">
+          <RotateCcw size={11} className={acting === 'undo' ? 'animate-spin' : ''} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ── Mobile: day-picker strip + person-grouped list ──────────────────── */
 function MobileDayView({
   days,
@@ -241,6 +377,7 @@ function MobileDayView({
   acting,
   onUndo,
   onShare,
+  onEditPts,
 }: {
   days: Date[]
   profiles: Profile[]
@@ -250,6 +387,7 @@ function MobileDayView({
   acting: Record<string, 'undo' | 'share'>
   onUndo: (id: string) => void
   onShare: (id: string) => void
+  onEditPts: (id: string, newBounty: number) => Promise<void>
 }) {
   const today = utcDateStr(new Date())
 
@@ -318,39 +456,15 @@ function MobileDayView({
               </div>
               <div className="space-y-1.5 pl-9">
                 {personTasks.map(t => (
-                  <div key={t.id}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2"
-                    style={{
-                      backgroundColor: colorWithOpacity(profile.avatar_color, 0.08),
-                      border: `1px solid ${colorWithOpacity(profile.avatar_color, 0.2)}`,
-                    }}>
-                    <p className="flex-1 text-xs text-gray-800 font-medium leading-snug">{t.title}</p>
-                    {t.is_shared && (
-                      <span className="text-[10px] text-purple-400 font-medium shrink-0">shared</span>
-                    )}
-                    <div className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                      style={{
-                        backgroundColor: colorWithOpacity(profile.avatar_color, 0.12),
-                        color: profile.avatar_color,
-                      }}>
-                      {t.is_bounty
-                        ? <Zap size={8} style={{ fill: profile.avatar_color, color: profile.avatar_color }} />
-                        : <CheckCircle2 size={8} style={{ color: profile.avatar_color }} />}
-                      +{effectivePts(t)}
-                    </div>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      {!t.is_shared && (
-                        <button onClick={() => onShare(t.id)} disabled={!!acting[t.id]}
-                          className="p-1 rounded text-gray-300 hover:text-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-40">
-                          <Users size={11} />
-                        </button>
-                      )}
-                      <button onClick={() => onUndo(t.id)} disabled={!!acting[t.id]}
-                        className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40">
-                        <RotateCcw size={11} className={acting[t.id] === 'undo' ? 'animate-spin' : ''} />
-                      </button>
-                    </div>
-                  </div>
+                  <MobileTaskCard
+                    key={t.id}
+                    task={t}
+                    color={profile.avatar_color}
+                    acting={acting[t.id]}
+                    onUndo={() => onUndo(t.id)}
+                    onShare={() => onShare(t.id)}
+                    onEditPts={newBounty => onEditPts(t.id, newBounty)}
+                  />
                 ))}
               </div>
             </div>
@@ -429,6 +543,15 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
     setActing(prev => { const n = { ...prev }; delete n[taskId]; return n })
   }
 
+  async function handleEditPts(taskId: string, newBounty: number) {
+    const res = await fetch(`/api/tasks/${taskId}/points`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point_bounty: newBounty }),
+    })
+    if (res.ok) setTasks(prev => prev.map(t => t.id === taskId ? { ...t, point_bounty: newBounty } : t))
+  }
+
   const isCurrentWeek = utcDateStr(monday) === utcDateStr(getWeekStart(new Date()))
 
   const weekTotals = profiles
@@ -486,6 +609,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
           acting={acting}
           onUndo={handleUndo}
           onShare={handleShare}
+          onEditPts={handleEditPts}
         />
       </div>
 
@@ -500,6 +624,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
           acting={acting}
           onUndo={handleUndo}
           onShare={handleShare}
+          onEditPts={handleEditPts}
         />
       </div>
     </div>
