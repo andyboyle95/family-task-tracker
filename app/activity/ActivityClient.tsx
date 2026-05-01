@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Zap, CheckCircle2, RotateCcw, Users, CalendarDays } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Zap, CheckCircle2, RotateCcw, Users, CalendarDays, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
@@ -205,14 +205,17 @@ function DesktopSwimlane({
         const isToday = ds === today
         return (
           <div key={ds} className="pb-3 text-center">
-            <p className={`text-[10px] font-semibold uppercase tracking-wide
+            <p className={`text-[10px] font-semibold uppercase tracking-wide mb-0.5
               ${isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
               {d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' })}
             </p>
-            <p className={`text-lg font-bold leading-tight
-              ${isToday ? 'text-indigo-600' : 'text-gray-800'}`}>
-              {d.getUTCDate()}
-            </p>
+            {isToday ? (
+              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-base font-bold flex items-center justify-center mx-auto shadow-sm shadow-indigo-200">
+                {d.getUTCDate()}
+              </div>
+            ) : (
+              <p className="text-lg font-bold leading-tight text-gray-800">{d.getUTCDate()}</p>
+            )}
           </div>
         )
       })}
@@ -514,6 +517,8 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
   const [tasks,       setTasks]       = useState<CompletedTask[]>(initialTasks)
   const [loading,     setLoading]     = useState(false)
   const [acting,      setActing]      = useState<Record<string, 'undo' | 'share'>>({})
+  const [toast,       setToast]       = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selectedDay, setSelectedDay] = useState<string>(() => {
     const today   = utcDateStr(new Date())
     const weekEnd = new Date(`${initialWeekStart}T00:00:00Z`)
@@ -523,6 +528,12 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
 
   const supabase = createClient()
   const days     = getWeekDays(monday)
+
+  function showToast(msg: string) {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast(msg)
+    toastTimer.current = setTimeout(() => setToast(null), 2500)
+  }
 
   const fetchWeek = useCallback(async (mon: Date) => {
     setLoading(true)
@@ -565,14 +576,20 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
   async function handleUndo(taskId: string) {
     setActing(prev => ({ ...prev, [taskId]: 'undo' }))
     const res = await fetch(`/api/tasks/${taskId}/uncomplete`, { method: 'POST' })
-    if (res.ok) setTasks(prev => prev.filter(t => t.id !== taskId))
+    if (res.ok) {
+      setTasks(prev => prev.filter(t => t.id !== taskId))
+      showToast('Task moved back to pending')
+    }
     setActing(prev => { const n = { ...prev }; delete n[taskId]; return n })
   }
 
   async function handleShare(taskId: string) {
     setActing(prev => ({ ...prev, [taskId]: 'share' }))
     const res = await fetch(`/api/tasks/${taskId}/share`, { method: 'POST' })
-    if (res.ok) setTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_shared: true } : t))
+    if (res.ok) {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_shared: true } : t))
+      showToast('Task marked as shared')
+    }
     setActing(prev => { const n = { ...prev }; delete n[taskId]; return n })
   }
 
@@ -584,6 +601,7 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
     })
     if (res.ok) {
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, point_bounty: newBounty } : t))
+      showToast('Points updated')
     }
   }
 
@@ -599,10 +617,17 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
           ? { ...t, completed_at: `${newDate}T12:00:00.000Z` }
           : t
       ))
+      showToast('Task moved')
     }
   }
 
-  const isCurrentWeek = utcDateStr(monday) === utcDateStr(getWeekStart(new Date()))
+  const isCurrentWeek  = utcDateStr(monday) === utcDateStr(getWeekStart(new Date()))
+  const weekDiffDays   = Math.round((getWeekStart(new Date()).getTime() - monday.getTime()) / (1000 * 60 * 60 * 24))
+  const relativeLabel  = weekDiffDays === 0 ? 'This week'
+    : weekDiffDays === 7  ? 'Last week'
+    : weekDiffDays === 14 ? '2 weeks ago'
+    : weekDiffDays === 21 ? '3 weeks ago'
+    : null
 
   const weekTotals = profiles
     .map(p => ({
@@ -614,6 +639,16 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
 
   return (
     <div>
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="flex items-center gap-2 bg-gray-900 text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow-xl whitespace-nowrap">
+            <Check size={14} className="text-emerald-400 shrink-0" />
+            {toast}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">Activity</h1>
         <div className="flex items-center gap-2">
@@ -623,7 +658,11 @@ export function ActivityClient({ initialTasks, profiles, familyId, initialWeekSt
           </button>
           <div className="text-center min-w-[110px]">
             <p className="text-sm font-semibold text-gray-700">{weekLabel(monday)}</p>
-            {loading && <p className="text-[10px] text-indigo-400 mt-0.5">Loading…</p>}
+            {loading
+              ? <p className="text-[10px] text-indigo-400 mt-0.5">Loading…</p>
+              : relativeLabel && (
+                  <p className="text-[10px] font-semibold mt-0.5 text-indigo-500">{relativeLabel}</p>
+                )}
           </div>
           <button onClick={nextWeek} disabled={isCurrentWeek}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white border border-gray-200 transition-colors disabled:opacity-30">

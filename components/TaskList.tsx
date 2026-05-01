@@ -116,9 +116,17 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
   )
   const [undo, setUndo]          = useState<UndoState | null>(null)
   const [undoProgress, setUndoProgress] = useState(100)
-  const undoTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const undoTick   = useRef<ReturnType<typeof setInterval> | null>(null)
-  const supabase   = createClient()
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null)
+  const undoTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const undoTick    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const feedbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const supabase    = createClient()
+
+  function showFeedback(msg: string) {
+    if (feedbackRef.current) clearTimeout(feedbackRef.current)
+    setFeedbackToast(msg)
+    feedbackRef.current = setTimeout(() => setFeedbackToast(null), 2500)
+  }
 
   const fetchTasks = useCallback(async (f: Filter = filter) => {
     const res = await fetch(`/api/tasks?filter=${f}`)
@@ -227,11 +235,15 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
   }
 
   async function handleUpdate(id: string, patch: { title?: string; point_bounty?: number }) {
-    await fetch(`/api/tasks/${id}`, {
+    const isPointsOnly = 'point_bounty' in patch && !('title' in patch)
+    const url = isPointsOnly ? `/api/tasks/${id}/points` : `/api/tasks/${id}`
+    await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     })
+    if (isPointsOnly) showFeedback(`Points updated to ${patch.point_bounty}`)
+    else if ('title' in patch) showFeedback('Task renamed')
     fetchTasks()
   }
 
@@ -359,10 +371,11 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
       {/* ── FABs ───────────────────────────────────────────────── */}
       <button
         onClick={() => setShowLogWork(true)}
-        className="fixed bottom-52 md:bottom-[140px] right-4 w-12 h-12 bg-white hover:bg-gray-50 active:scale-95 text-purple-600 rounded-2xl shadow-md shadow-gray-200 border border-gray-200 flex items-center justify-center transition-all z-40"
+        className="fixed bottom-52 md:bottom-[140px] right-4 h-12 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-2xl shadow-lg shadow-purple-200 flex items-center gap-2 px-4 transition-all z-40"
         title="Log work with AI"
       >
-        <Sparkles size={20} />
+        <Sparkles size={18} />
+        <span className="text-sm font-semibold">Log work</span>
       </button>
       <button
         onClick={() => setShowBulk(true)}
@@ -377,6 +390,15 @@ export function TaskList({ initialTasks, members, currentUserId, familyId }: Pro
       >
         <Plus size={26} strokeWidth={2.5} />
       </button>
+
+      {/* ── Feedback toast ─────────────────────────────────────── */}
+      {feedbackToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-gray-900 text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow-xl whitespace-nowrap animate-slide-up">
+            {feedbackToast}
+          </div>
+        </div>
+      )}
 
       {/* ── Undo toast ─────────────────────────────────────────── */}
       {undo && (

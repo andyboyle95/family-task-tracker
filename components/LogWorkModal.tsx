@@ -19,6 +19,9 @@ const QUICK_TASKS = [
   { label: 'Make dinner',     emoji: '🍳', points: 10 },
   { label: 'Clear up dinner', emoji: '🧹', points: 5  },
   { label: 'Baby bath',       emoji: '🛁', points: 5  },
+  { label: 'Water plants',    emoji: '🌱', points: 3  },
+  { label: 'Hoovering',       emoji: '🌪️', points: 3  },
+  { label: 'Take bins out',   emoji: '🗑️', points: 3  },
 ] as const
 
 interface Props {

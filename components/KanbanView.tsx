@@ -102,17 +102,22 @@ function KanbanCard({
             className="w-full text-[12px] font-medium text-gray-800 bg-indigo-50 border border-indigo-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 leading-snug"
           />
         ) : (
-          <p
-            title={done ? '' : 'Click to edit'}
-            onClick={startEditTitle}
-            className={`text-[12px] font-medium leading-snug line-clamp-2 ${
-              done
-                ? 'line-through text-gray-400'
-                : 'text-gray-800 cursor-text hover:text-indigo-700'
-            }`}
-          >
-            {task.title}
-          </p>
+          <div className="relative">
+            <p
+              title={done ? '' : 'Click to edit'}
+              onClick={startEditTitle}
+              className={`text-[12px] font-medium leading-snug line-clamp-2 ${
+                done
+                  ? 'line-through text-gray-400'
+                  : 'text-gray-800 cursor-text group-hover:text-indigo-700 group-hover:underline decoration-indigo-200'
+              }`}
+            >
+              {task.title}
+            </p>
+            {!done && (
+              <Pencil size={7} className="absolute top-0 -right-0.5 opacity-0 group-hover:opacity-40 text-indigo-400 transition-opacity" />
+            )}
+          </div>
         )}
       </div>
 
@@ -143,11 +148,12 @@ function KanbanCard({
             title={done ? '' : 'Click to edit points'}
             onClick={startEditPts}
             className={`inline-flex items-center gap-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-amber-100 ${
-              done ? '' : 'cursor-pointer hover:border-amber-300'
+              done ? '' : 'cursor-pointer hover:border-amber-400 hover:bg-amber-100'
             }`}
           >
             {task.is_bounty && <Zap size={8} className="fill-amber-500 text-amber-500" />}
             {task.point_bounty}pt
+            {!done && <Pencil size={6} className="opacity-0 group-hover:opacity-50 text-amber-600 ml-0.5 transition-opacity" />}
           </span>
         )}
 
@@ -310,6 +316,9 @@ function KanbanColumn({
 
 /* ── KanbanView ───────────────────────────────────────────────────────────── */
 export function KanbanView({ tasks, members, currentUserId, onComplete, onUncomplete, onEdit, onUpdate }: Props) {
+  const scrollRef  = useRef<HTMLDivElement>(null)
+  const [activeCol, setActiveCol] = useState(0)
+
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
 
   const pending   = tasks.filter(t => t.status === 'pending')
@@ -359,6 +368,12 @@ export function KanbanView({ tasks, members, currentUserId, onComplete, onUncomp
     })
   }
 
+  function handleScroll() {
+    if (!scrollRef.current) return
+    const itemWidth = 256 + 12 // w-64 + gap-3
+    setActiveCol(Math.min(columns.length - 1, Math.round(scrollRef.current.scrollLeft / itemWidth)))
+  }
+
   if (columns.length === 0) {
     return (
       <div className="text-center py-16 px-4">
@@ -383,7 +398,9 @@ export function KanbanView({ tasks, members, currentUserId, onComplete, onUncomp
 
       {/* Mobile: horizontal snap scroll */}
       <div
-        className="md:hidden flex gap-3 overflow-x-auto pb-6 px-4 snap-x snap-mandatory"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="md:hidden flex gap-3 overflow-x-auto pb-3 px-4 snap-x snap-mandatory"
         style={{ scrollbarWidth: 'none' }}
       >
         {columns.map(col => (
@@ -392,6 +409,19 @@ export function KanbanView({ tasks, members, currentUserId, onComplete, onUncomp
           </div>
         ))}
       </div>
+
+      {/* Mobile: column position dots */}
+      {columns.length > 1 && (
+        <div className="md:hidden flex justify-center items-center gap-1.5 pb-4">
+          {columns.map((col, i) => (
+            <div
+              key={col.id}
+              className={`rounded-full transition-all duration-200 ${i === activeCol ? 'w-5 h-2' : 'w-2 h-2'}`}
+              style={{ backgroundColor: i === activeCol ? col.color : col.color + '44' }}
+            />
+          ))}
+        </div>
+      )}
     </>
   )
 }

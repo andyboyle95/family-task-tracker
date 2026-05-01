@@ -11,17 +11,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json()
   const db = createAdminClient()
 
+  // Build update object from only the fields present in the body to avoid
+  // overwriting unrelated columns (e.g. sending { point_bounty } must not
+  // reset is_bounty to false or assigned_to to null).
+  const updates: Record<string, unknown> = {}
+  if ('title'            in body) updates.title            = body.title
+  if ('notes'            in body) updates.notes            = body.notes || null
+  if ('due_at'           in body) updates.due_at           = body.due_at || null
+  if ('point_bounty'     in body) updates.point_bounty     = body.point_bounty
+  if ('recurrence_rule'  in body) updates.recurrence_rule  = body.recurrence_rule || null
+  if ('is_bounty' in body || 'assigned_to' in body) {
+    updates.is_bounty   = body.is_bounty ?? false
+    updates.assigned_to = updates.is_bounty ? null : (body.assigned_to || null)
+  }
+
   const { data, error } = await db
     .from('tasks')
-    .update({
-      title: body.title,
-      notes: body.notes,
-      assigned_to: body.is_bounty ? null : (body.assigned_to || null),
-      due_at: body.due_at || null,
-      point_bounty: body.point_bounty,
-      recurrence_rule: body.recurrence_rule || null,
-      is_bounty: body.is_bounty ?? false,
-    })
+    .update(updates)
     .eq('id', id)
     .eq('family_id', session.familyId)
     .select(`*, assignee:profiles!tasks_assigned_to_fkey(id,name,avatar_color)`)
