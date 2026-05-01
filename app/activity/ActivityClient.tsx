@@ -496,10 +496,7 @@ function MobileDayView({
                     onUndo={() => onUndo(t.id)}
                     onShare={() => onShare(t.id)}
                     onEditPts={nb => onEditPts(t.id, nb)}
-                    onMoveTask={date => {
-                      onMoveTask(t.id, date)
-                      // If moved away from selected day, deselect or stay
-                    }}
+                    onMoveTask={date => onMoveTask(t.id, date)}
                   />
                 ))}
               </div>
