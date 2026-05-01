@@ -70,19 +70,27 @@ function tryParseStructured(line: string, members: { id: string; name: string }[
   return { description: parts[1], person_id: person.id, person_name: person.name, points, completed_at }
 }
 
-/* ── Simple keyword-based point estimate (no AI needed) ────────────────── */
+/* ── Keyword-based point estimate calibrated to 20pts/hr ───────────────── */
 function estimatePoints(desc: string): number {
   const d = desc.toLowerCase()
-  if (/full.*(clean|house)/.test(d))              return 30
-  if (/iron/.test(d))                              return 15
-  if (/grocery|shop|supermarket/.test(d))          return 15
-  if (/mow|lawn|garden/.test(d))                   return 20
-  if (/cook|dinner|lunch|breakfast/.test(d))       return 10
-  if (/vacuum|hoover|sweep/.test(d))               return 10
-  if (/laundry|washing|clothes/.test(d))           return 10
-  if (/bath|bottle|walk|dog/.test(d))              return 10
-  if (/dishwasher|dish|bin|trash|tidy/.test(d))    return 5
-  if (/clean|wipe|mop/.test(d))                    return 8
+  // ~2hr = 40pts
+  if (/full.*(clean|house|spring)/.test(d))              return 40
+  // ~1.5hr = 30pts
+  if (/mow|lawn/.test(d))                                return 30
+  // ~1hr = 20pts
+  if (/iron|grocery|big.?shop|supermarket|garden(?!.*water)/.test(d)) return 20
+  // ~45min = 15pts
+  if (/declutter|sort.*out|clear.*out|organis/.test(d))  return 15
+  // ~30min = 10pts
+  if (/cook|dinner|lunch|breakfast|make.*meal|supper/.test(d)) return 10
+  if (/vacuum|hoover|sweep/.test(d))                     return 10
+  if (/laundry|washing(?!.*up)|clothes/.test(d))         return 10
+  if (/clean(?!.*up)|mop|scrub/.test(d))                 return 10
+  if (/bath|walk.*dog|dog.*walk/.test(d))                return 10
+  if (/shop(?!.*dish)|order|pick.?up/.test(d))           return 10
+  // ~15min = 5pts
+  if (/dishwasher|washing.?up|tidy|clear.?up|wipe/.test(d)) return 5
+  if (/bottle|nappy|nappie|bin|trash|rubbish/.test(d))   return 5
   return 10
 }
 
@@ -173,16 +181,21 @@ export async function POST(req: NextRequest) {
         .map(([title, pts]) => `- "${title}": ${Math.round(pts.reduce((a,b)=>a+b,0)/pts.length)} pts`)
         .join('\n')
 
-      const prompt = `Parse these tasks and return JSON. 10 pts = 30 min.
-CALIBRATION: 15min=5pts, 30min=10pts, 1hr=20pts, 2hr=40pts.
+      const prompt = `Parse household tasks and return JSON. Use this EXACT point scale (20pts = 1hr):
+10min→3pts | 15min→5pts | 30min→10pts | 45min→15pts | 1hr→20pts | 1.5hr→30pts | 2hr→40pts
+
+COMMON DURATIONS: bin/bottles/nappy/tidy→5pts | dishwasher/washing-up/clear-up→5pts | cooking/cleaning/hoovering/laundry/bath/dog walk→10pts | ironing/grocery shop→20pts | mowing/full house clean→30-40pts
+
 FAMILY: ${memberList.map(m => `${m.name}(${m.id})`).join(', ')}
-DEFAULT PERSON ID: ${session.userId}
-HISTORY: ${taskContext || 'none'}
+DEFAULT PERSON: ${session.userId}
+TASK HISTORY (use as reference): ${taskContext || 'none'}
 TODAY: ${new Date().toISOString().split('T')[0]}
-TASKS:
+
+TASKS TO PARSE:
 ${freeTextLines.join('\n')}
-Return ONLY JSON array, one object per line:
-[{"description":"title","person_id":"uuid","person_name":"name","points":10,"completed_at":null,"reasoning":"reason"}]`
+
+Return ONLY a JSON array:
+[{"description":"short title","person_id":"uuid","person_name":"name","points":10,"completed_at":null,"reasoning":"e.g. cooking ~30min → 10pts"}]`
 
       try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
