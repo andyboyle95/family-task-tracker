@@ -3,18 +3,29 @@ import { getSession } from '@/lib/session'
 import { createAdminClient } from '@/lib/supabase/server'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
-import { Leaderboard, type MemberStats, type ChartDay, type CategoryTotal } from '@/components/Leaderboard'
+import {
+  Leaderboard,
+  type MemberStats,
+  type ChartDay,
+  type CategoryTotal,
+  type TaskChampion,
+  type FamilyStats,
+} from '@/components/Leaderboard'
 import type { Profile } from '@/types'
 
+/* ── Category definitions — order determines first-match priority ─── */
 const CATEGORY_DEFS = [
   { label: 'Little Monkey Care', emoji: '🐒', regex: /bottle|baby|napp(y|ie)|formula|wean|nursery|cot|buggy|pram|stroller|little.?monkey/ },
-  { label: 'Cooking & Meals',    emoji: '🍳', regex: /cook|dinner|lunch|breakfast|meal|food|recipe|supper|make.dinner|tea(?!.*bag)/ },
-  { label: 'Cleaning',           emoji: '🧹', regex: /clean|hoover|vacuum|sweep|mop|wipe|toilet|loo|dishwasher|washing.?up|scrub|tidy.?up|clear.?up|clear.?after/ },
-  { label: 'DIY & Installations',emoji: '🔨', regex: /install|fix|hang|repair|treat|electric|plumb|shelf|curtain|scarif|hook|bulb|u.?bend|put.?up|wire|solder/ },
-  { label: 'Decorating',         emoji: '🎨', regex: /paint|refurb|redesign|decor|renovat|refit|stain|wallpaper/ },
-  { label: 'Decluttering',       emoji: '📦', regex: /sort(?! out dinner)|rationalise|rationalis|organis|donate|sell|return|clear.?out|cupboard|cabinet|clothes|tupperware|ottoman/ },
-  { label: 'Shopping & Orders',  emoji: '🛒', regex: /order|buy|purchas|shop|groceri|tesco|asda|sainsbury|amazon|collect|pick.?up/ },
-  { label: 'Admin & Planning',   emoji: '📋', regex: /book|confirm|decide|research|plan|oversee|deliver|coordinat|visit|choos|measure|quote|sign|call/ },
+  { label: 'Cooking & Meals',    emoji: '🍳', regex: /cook|dinner|lunch|breakfast|meal|food|recipe|supper|make.?dinner|tea(?!.*bag)/ },
+  { label: 'Cleaning',           emoji: '🧹', regex: /clean|hoover|vacuum|sweep|mop|wipe|toilet|loo|dishwasher|washing.?up|scrub|tidy(?!.*up.*dinner)|tidy.?up|clear.?up|clear.?after/ },
+  { label: 'Laundry',            emoji: '👕', regex: /laundry|iron|hang.*out|tumble|clothes.*wash|wash.*cloth|fold.*cloth|dry.*laundry/ },
+  { label: 'Garden & Outdoors',  emoji: '🌿', regex: /garden|mow|lawn|weed|water.*plant|plant.*water|trim.*hedge|hedge|scarif|compost|outdoor|outside/ },
+  { label: 'Dog & Pets',         emoji: '🐕', regex: /dog|walk.*dog|dog.*walk|pet food|vet|cat food|\bcat\b|fish|hamster/ },
+  { label: 'DIY & Installations',emoji: '🔨', regex: /install|fix\b|hang\b|repair|treat\b|electric|plumb|shelf|curtain|hook\b|bulb\b|u.?bend|put.?up|wire\b|solder/ },
+  { label: 'Decorating',         emoji: '🎨', regex: /paint|refurb|redesign|decor|renovat|refit|stain\b|wallpaper/ },
+  { label: 'Decluttering',       emoji: '📦', regex: /sort(?! out dinner)|rationalise|rationalis|organis|donate|sell\b|return\b|clear.?out|cupboard|cabinet|tupperware|ottoman/ },
+  { label: 'Shopping & Orders',  emoji: '🛒', regex: /order|buy\b|purchas|shop|groceri|tesco|asda|sainsbury|amazon|collect|pick.?up/ },
+  { label: 'Admin & Planning',   emoji: '📋', regex: /book\b|confirm|decide|research|plan\b|oversee|deliver|coordinat|visit\b|choos|measure|quote\b|sign\b|\bcall\b/ },
 ]
 
 interface HistoryTask {
@@ -31,11 +42,14 @@ function effectivePts(t: HistoryTask) {
   return t.is_shared ? Math.ceil(t.point_bounty / 2) : t.point_bounty
 }
 
-// A task belongs to a user if they completed it (non-shared),
-// or if it's shared and they were either the completer or assignee.
 function belongsTo(t: HistoryTask, userId: string): boolean {
   if (t.is_shared) return t.completed_by === userId || t.assigned_to === userId
   return (t.completed_by ?? t.assigned_to) === userId
+}
+
+function categoryFor(title: string): string {
+  const tl = title.toLowerCase()
+  return CATEGORY_DEFS.find(d => d.regex.test(tl))?.label ?? 'Other'
 }
 
 function getAchievement(breakdown: { title: string; count: number }[], totalPoints: number): string {
@@ -68,8 +82,7 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
   const weekStart  = new Date(now); weekStart.setDate(now.getDate() - 7); weekStart.setHours(0, 0, 0, 0)
 
   return profiles.map(p => {
-    // Shared tasks count for BOTH the completer and the assignee
-    const mine = history.filter(t => belongsTo(t, p.id))
+    const mine           = history.filter(t => belongsTo(t, p.id))
     const points_alltime = mine.reduce((s, t) => s + effectivePts(t), 0)
 
     const byTitle = new Map<string, { count: number; points: number }>()
@@ -83,15 +96,18 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
       .sort((a, b) => b.points - a.points)
       .slice(0, 6)
 
-    const category_breakdown = CATEGORY_DEFS
-      .map(def => ({
-        label:  def.label,
-        emoji:  def.emoji,
-        points: mine
-          .filter(t => def.regex.test(t.title.toLowerCase()))
-          .reduce((s, t) => s + effectivePts(t), 0),
-      }))
-      .filter(c => c.points > 0)
+    // Per-person category breakdown — every task lands in exactly one bucket
+    const catMap = new Map<string, { emoji: string; points: number }>()
+    for (const t of mine) {
+      const cat  = categoryFor(t.title)
+      const def  = CATEGORY_DEFS.find(d => d.label === cat)
+      const emoji = def?.emoji ?? '✨'
+      const pts  = effectivePts(t)
+      const cur  = catMap.get(cat) ?? { emoji, points: 0 }
+      catMap.set(cat, { emoji, points: cur.points + pts })
+    }
+    const category_breakdown = [...catMap.entries()]
+      .map(([label, v]) => ({ label, ...v }))
       .sort((a, b) => b.points - a.points)
 
     return {
@@ -111,24 +127,44 @@ function buildStats(profiles: Profile[], history: HistoryTask[]): MemberStats[] 
 }
 
 function buildCategories(profiles: Profile[], history: HistoryTask[]): CategoryTotal[] {
-  return CATEGORY_DEFS.map(def => {
-    const matching  = history.filter(t => def.regex.test(t.title.toLowerCase()))
-    const totalPts  = matching.reduce((s, t) => s + effectivePts(t), 0)
+  const result: CategoryTotal[] = []
 
+  // Each task lands in its first-matching category only (no double-counting)
+  const assigned = new Map<string, string>() // taskId → category label
+  for (const t of history) {
+    assigned.set(t.id, categoryFor(t.title))
+  }
+
+  // Named categories
+  for (const def of CATEGORY_DEFS) {
+    const matching = history.filter(t => assigned.get(t.id) === def.label)
+    if (matching.length === 0) continue
+    const totalPts = matching.reduce((s, t) => s + effectivePts(t), 0)
     const byUser = profiles
       .map(p => ({
-        userId: p.id,
-        name:   p.name,
-        color:  p.avatar_color,
-        points: matching
-          .filter(t => belongsTo(t, p.id))
-          .reduce((s, t) => s + effectivePts(t), 0),
+        userId: p.id, name: p.name, color: p.avatar_color,
+        points: matching.filter(t => belongsTo(t, p.id)).reduce((s, t) => s + effectivePts(t), 0),
       }))
       .filter(u => u.points > 0)
       .sort((a, b) => b.points - a.points)
+    result.push({ label: def.label, emoji: def.emoji, points: totalPts, count: matching.length, byUser })
+  }
 
-    return { label: def.label, emoji: def.emoji, points: totalPts, count: matching.length, byUser }
-  }).sort((a, b) => b.points - a.points)
+  // Other catchall — tasks that matched no named category
+  const other = history.filter(t => assigned.get(t.id) === 'Other')
+  if (other.length > 0) {
+    const totalPts = other.reduce((s, t) => s + effectivePts(t), 0)
+    const byUser = profiles
+      .map(p => ({
+        userId: p.id, name: p.name, color: p.avatar_color,
+        points: other.filter(t => belongsTo(t, p.id)).reduce((s, t) => s + effectivePts(t), 0),
+      }))
+      .filter(u => u.points > 0)
+      .sort((a, b) => b.points - a.points)
+    result.push({ label: 'Other', emoji: '✨', points: totalPts, count: other.length, byUser })
+  }
+
+  return result.sort((a, b) => b.points - a.points)
 }
 
 function buildChartData(profiles: Profile[], history: HistoryTask[]): ChartDay[] {
@@ -138,7 +174,6 @@ function buildChartData(profiles: Profile[], history: HistoryTask[]): ChartDay[]
     d.setDate(d.getDate() - i)
     days.push(d.toISOString().split('T')[0])
   }
-
   return days.map(date => {
     const byUser: Record<string, number> = {}
     for (const p of profiles) {
@@ -152,6 +187,73 @@ function buildChartData(profiles: Profile[], history: HistoryTask[]): ChartDay[]
       byUser,
     }
   })
+}
+
+function buildTaskInsights(profiles: Profile[], history: HistoryTask[]): TaskChampion[] {
+  // Normalise title → canonical form + per-user count
+  const byTitle = new Map<string, { canonical: string; userCounts: Map<string, number> }>()
+
+  for (const t of history) {
+    const key = t.title.toLowerCase().trim()
+    if (!byTitle.has(key)) byTitle.set(key, { canonical: t.title, userCounts: new Map() })
+    const entry = byTitle.get(key)!
+    for (const p of profiles) {
+      if (belongsTo(t, p.id)) {
+        entry.userCounts.set(p.id, (entry.userCounts.get(p.id) ?? 0) + 1)
+      }
+    }
+  }
+
+  return [...byTitle.values()]
+    .map(entry => {
+      const champions = [...entry.userCounts.entries()]
+        .map(([userId, count]) => {
+          const p = profiles.find(pp => pp.id === userId)!
+          return { userId, name: p.name, color: p.avatar_color, count }
+        })
+        .sort((a, b) => b.count - a.count)
+      return { title: entry.canonical, totalCount: champions.reduce((s, c) => s + c.count, 0), champions }
+    })
+    .filter(x => x.totalCount >= 2)
+    .sort((a, b) => b.totalCount - a.totalCount)
+    .slice(0, 12)
+}
+
+function buildFamilyStats(profiles: Profile[], history: HistoryTask[]): FamilyStats {
+  const weekStart = new Date()
+  weekStart.setDate(weekStart.getDate() - 7)
+  weekStart.setHours(0, 0, 0, 0)
+
+  // Top task by raw count
+  const titleCounts = new Map<string, number>()
+  for (const t of history) {
+    const key = t.title.toLowerCase().trim()
+    titleCounts.set(key, (titleCounts.get(key) ?? 0) + 1)
+  }
+  const topEntry = [...titleCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+  const topTask = topEntry
+    ? history.find(t => t.title.toLowerCase().trim() === topEntry[0])?.title ?? null
+    : null
+
+  // Most productive person this week (by effective points)
+  const weekLeaders = profiles
+    .map(p => ({
+      name: p.name, color: p.avatar_color,
+      points: history
+        .filter(t => belongsTo(t, p.id) && t.completed_at && new Date(t.completed_at) >= weekStart)
+        .reduce((s, t) => s + effectivePts(t), 0),
+    }))
+    .sort((a, b) => b.points - a.points)
+
+  // Uncategorised count (for transparency)
+  const uncategorisedCount = history.filter(t => categoryFor(t.title) === 'Other').length
+
+  return {
+    totalTasks: history.length,
+    topTask,
+    mostProductiveThisWeek: weekLeaders[0]?.points > 0 ? weekLeaders[0] : null,
+    uncategorisedCount,
+  }
 }
 
 export default async function LeaderboardPage() {
@@ -176,8 +278,10 @@ export default async function LeaderboardPage() {
   const stats      = buildStats(profiles, hist)
   const chart      = buildChartData(profiles, hist)
   const categories = buildCategories(profiles, hist)
+  const insights   = buildTaskInsights(profiles, hist)
+  const familyStats = buildFamilyStats(profiles, hist)
 
-  // Sync profiles.points to computed all-time totals (heals any historical drift)
+  // Sync profiles.points to computed all-time totals
   const outOfSync = stats.filter(s => s.profile.points !== s.points_alltime)
   if (outOfSync.length > 0) {
     await Promise.all(
@@ -187,7 +291,6 @@ export default async function LeaderboardPage() {
     )
   }
 
-  // Use the synced value for the header
   const profileForHeader = profile
     ? { ...(profile as Profile), points: stats.find(s => s.profile.id === session.userId)?.points_alltime ?? (profile as Profile).points }
     : null
@@ -196,7 +299,14 @@ export default async function LeaderboardPage() {
     <div className="min-h-screen bg-gray-50">
       <Header familyName={family?.name ?? 'Family Tasks'} currentUser={profileForHeader} />
       <main className="max-w-7xl mx-auto px-4 md:px-8 pt-4 pb-32 md:pb-8">
-        <Leaderboard stats={stats} currentUserId={session.userId} chartData={chart} categories={categories} />
+        <Leaderboard
+          stats={stats}
+          currentUserId={session.userId}
+          chartData={chart}
+          categories={categories}
+          insights={insights}
+          familyStats={familyStats}
+        />
       </main>
       <BottomNav />
     </div>
